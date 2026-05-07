@@ -1,0 +1,28 @@
+# Compiled artifacts — huge, regenerated on every build
+/target
+
+# Environment files (secrets, DB credentials)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# macOS
+.DS_Store
+
+# Backup / temp files
+*.bak
+*.swp
+*.tmp
+
+# Debug output
+*.pdb
+
+# Coverage reports
+*.profraw
+tarpaulin-report.html
+cobertura.xml
