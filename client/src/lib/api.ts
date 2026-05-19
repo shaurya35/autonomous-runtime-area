@@ -24,8 +24,13 @@ export interface ChannelEvent {
   run_id: string;
   incident_id: string;
   phase: Phase;
-  type: "thought" | "tool_call" | "tool_result" | "score" | "summary";
+  type: "thought" | "tool_call" | "tool_result" | "error" | "score" | "summary";
   payload: Record<string, unknown>;
+  // Convenience fields extracted from payload for component use
+  content?: string;
+  tool_name?: string;
+  tool_input?: unknown;
+  tool_result?: unknown;
 }
 
 export interface IncidentMeta {

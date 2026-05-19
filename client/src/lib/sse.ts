@@ -13,7 +13,15 @@ export function useIncidentStream(runId: string | null): ChannelEvent[] {
 
     es.onmessage = (e) => {
       try {
-        const ev: ChannelEvent = JSON.parse(e.data);
+        const raw = JSON.parse(e.data);
+        const p = raw.payload ?? {};
+        const ev: ChannelEvent = {
+          ...raw,
+          content: p.text ?? p.content ?? undefined,
+          tool_name: p.tool ?? undefined,
+          tool_input: p.input ?? undefined,
+          tool_result: p.result ?? undefined,
+        };
         setEvents((prev) => [...prev, ev]);
         if (ev.phase === "done" || ev.phase === "failed") es.close();
       } catch {}
