@@ -1,65 +1,49 @@
-import Image from "next/image";
+import { getApps, getIncidents, getAppIncidents, getAppVitals, deriveStatus } from "../lib/api";
+import { WardHeader } from "../components/WardHeader";
+import { PatientCard } from "../components/PatientCard";
+import { AdmissionsTable } from "../components/AdmissionsTable";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function WardPage() {
+  const [apps, runs] = await Promise.all([
+    getApps().catch(() => []),
+    getIncidents().catch(() => []),
+  ]);
+
+  const appData = await Promise.all(
+    apps.map(async (app) => {
+      const [incidents, vitals] = await Promise.all([
+        getAppIncidents(app.name).catch(() => []),
+        getAppVitals(app.name, { since: 60, simulate: true }).catch(() => null),
+      ]);
+      const status = deriveStatus(vitals);
+      return { app, incidents, vitals, status };
+    })
+  );
+
+  const activeIncidents = runs.filter(r => r.status === "running").length;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "1.5rem" }}>
+      <WardHeader appCount={apps.length} activeIncidents={activeIncidents} />
+
+      {apps.length === 0 && (
+        <div style={{ color: "var(--color-text-muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+          No patients yet. Add a <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem" }}>srebench.yaml</code> under <code style={{ fontFamily: "var(--font-mono)" }}>apps/</code> to admit one.
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
+        {appData.map(({ app, incidents, vitals, status }) => (
+          <PatientCard key={app.name} app={app} vitals={vitals} status={status} incidents={incidents} />
+        ))}
+      </div>
+
+      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "0.875rem" }}>Recent Cases</div>
+        <AdmissionsTable runs={runs} />
+      </div>
     </div>
   );
 }
