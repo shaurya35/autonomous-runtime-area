@@ -1,0 +1,28 @@
+services:
+  agent:
+    build: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - APPS_DIR=/workspace/apps
+      - EVIDENCE_DIR=/workspace/evidence
+      - RESULTS_DIR=/workspace/results
+    volumes:
+      - ./apps:/workspace/apps:ro
+      - ./evidence:/workspace/evidence
+      - ./results:/workspace/results
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  dashboard:
+    build: ./client
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - agent
+    restart: unless-stopped
+
+volumes: {}
