@@ -1,0 +1,44 @@
+id: SRE-0003
+title: "Wrong port number in config"
+app: shop-api
+category: config
+difficulty: easy
+
+inject:
+  - type: config_change
+    file: .env
+    diff: |
+      --- a/.env
+      +++ b/.env
+      @@ -4,7 +4,7 @@
+      -PORT=8080
+      +PORT=8081
+
+ground_truth:
+  root_cause: >
+    The PORT environment variable was changed to 8081, but the load balancer,
+    health checks, and docker-compose expose/published port all reference 8080.
+    The service starts successfully on 8081 but nothing can reach it — health
+    checks fail and all upstream traffic gets connection-refused.
+  fix_type: config_change
+  fix_diff: |
+    --- a/.env
+    +++ b/.env
+    @@ -4,7 +4,7 @@
+    -PORT=8081
+    +PORT=8080
+
+agent_sees:
+  alert: "shop-api health check failing: connection refused on port 8080"
+  symptoms:
+    - "curl http://localhost:8080/healthz returns: connection refused"
+    - "Docker healthcheck exiting with code 1"
+    - "No error logs from the app — process appears to have started"
+    - "netstat shows nothing listening on :8080"
+  recent_deploys:
+    - "Config refresh 5 minutes ago — .env updated for new deployment"
+
+pre_fix_tests:
+  - "curl -sf http://localhost:8080/healthz"
+post_fix_tests:
+  - "curl -sf http://localhost:8080/healthz | python3 -c \"import sys,json; assert json.load(sys.stdin)['status'] == 'ok'\""

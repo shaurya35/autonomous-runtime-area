@@ -1,0 +1,32 @@
+name: shop-api
+language: rust
+source_root: apps/rust/src
+test_root: apps/rust/tests
+commands:
+  build: docker build -t shop-api apps/rust
+  start: docker run -d --name shop-api -p 8080:8080 shop-api
+  stop: docker stop shop-api && docker rm shop-api
+  restart: docker restart shop-api
+  test: cargo test --manifest-path apps/rust/Cargo.toml
+signals:
+  logs:
+    type: docker
+    service: shop-api
+  metrics:
+    type: prometheus
+    url: http://localhost:8080/metrics
+  health:
+    type: http
+    url: http://localhost:8080/healthz
+    expect_status: 200
+endpoints:
+  - method: GET
+    path: /healthz
+  - method: GET
+    path: /products
+  - method: POST
+    path: /auth/login
+    sample_body: '{"email":"test@example.com","password":"password123"}'
+  - method: POST
+    path: /cart/add
+    sample_body: '{"product_id":1,"quantity":2}'

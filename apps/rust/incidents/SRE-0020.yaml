@@ -1,0 +1,70 @@
+id: SRE-0020
+title: "Async task starvation (blocking call inside tokio::spawn)"
+app: shop-api
+category: resource
+difficulty: hard
+
+inject:
+  - type: code_change
+    file: src/main.rs
+    diff: |
+      --- a/src/main.rs
+      +++ b/src/main.rs
+      @@ -26,10 +26,12 @@ async fn main() -> anyhow::Result<()> {
+           let state_clone = state.clone();
+           tokio::spawn(async move {
+               loop {
+      -            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+      -            let mut cache = state_clone.cache.lock().await;
+      -            cache.evict_expired(300);
+      +            // BUG: std::thread::sleep blocks the tokio thread, starving other tasks
+      +            std::thread::sleep(std::time::Duration::from_secs(10));
+      +            let mut cache = state_clone.cache.lock().await;
+      +            cache.evict_expired(300);
+               }
+           });
+
+ground_truth:
+  root_cause: >
+    The background cache cleanup task uses `std::thread::sleep` instead of
+    `tokio::time::sleep`. `std::thread::sleep` is a blocking OS call that
+    parks the OS thread for 10 seconds. Since tokio runs tasks on a thread
+    pool (default: number of CPUs), parking one thread for 10 seconds
+    starves that thread of all other async tasks. Under load, this spreads
+    across the pool, causing widespread latency spikes and timeouts. The fix
+    is to use `tokio::time::sleep(...).await` which yields the thread back
+    to the runtime while sleeping.
+  fix_type: code_change
+  fix_diff: |
+    --- a/src/main.rs
+    +++ b/src/main.rs
+    @@ -26,12 +26,10 @@ async fn main() -> anyhow::Result<()> {
+         let state_clone = state.clone();
+         tokio::spawn(async move {
+             loop {
+    -            std::thread::sleep(std::time::Duration::from_secs(10));
+    -            let mut cache = state_clone.cache.lock().await;
+    -            cache.evict_expired(300);
+    +            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    +            let mut cache = state_clone.cache.lock().await;
+    +            cache.evict_expired(300);
+             }
+         });
+
+agent_sees:
+  alert: "Intermittent high latency across all endpoints; p99 > 10s"
+  symptoms:
+    - "All endpoints have periodic 10-second latency spikes every ~10 seconds"
+    - "Spikes affect all concurrent requests — not isolated to one route"
+    - "During spike: no 500 errors, just timeouts and slow responses"
+    - "Metrics show: http_requests_total climbing but response time degrades"
+    - "Logs show normal request handling between spikes — no panics or errors"
+    - "CPU usage normal — this is not a compute bottleneck"
+  recent_deploys:
+    - "v1.4.0 deployed 30 minutes ago — added cache eviction background task"
+
+pre_fix_tests:
+  - "seq 1 3 | xargs -P3 -I{} curl -sf --max-time 2 http://localhost:8080/products"
+post_fix_tests:
+  - "seq 1 10 | xargs -P10 -I{} curl -sf --max-time 2 http://localhost:8080/products | wc -l | grep 10"
+  - "curl -sf http://localhost:8080/healthz | python3 -c \"import sys,json; assert json.load(sys.stdin)['status'] == 'ok'\""

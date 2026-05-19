@@ -1,0 +1,47 @@
+id: SRE-0013
+title: "Connection pool exhausted under moderate load"
+app: shop-api
+category: resource
+difficulty: medium
+
+inject:
+  - type: config_change
+    file: .env
+    diff: |
+      --- a/.env
+      +++ b/.env
+      @@ -9,7 +9,7 @@
+      -POOL_MAX_CONNECTIONS=10
+      +POOL_MAX_CONNECTIONS=2
+
+ground_truth:
+  root_cause: >
+    POOL_MAX_CONNECTIONS was reduced to 2. Under any concurrent load
+    (>2 simultaneous requests that hit the database), sqlx's connection pool
+    is exhausted. New requests queue and time out waiting for a connection,
+    producing 500 errors. The symptom appears gradually — single requests
+    still succeed, but response time degrades and errors appear under load.
+  fix_type: config_change
+  fix_diff: |
+    --- a/.env
+    +++ b/.env
+    @@ -9,7 +9,7 @@
+    -POOL_MAX_CONNECTIONS=2
+    +POOL_MAX_CONNECTIONS=10
+
+agent_sees:
+  alert: "Elevated 500 error rate on all DB-backed endpoints under load"
+  symptoms:
+    - "Single requests succeed; concurrent load causes connection timeouts"
+    - "Logs show: PoolTimedOut — all connections in use"
+    - "GET /products, GET /cart, POST /auth/login all affected under concurrency"
+    - "GET /healthz still returns 200 (probe is serialized, not concurrent)"
+    - "Error rate scales with concurrency — 3+ concurrent requests trigger failures"
+  recent_deploys:
+    - "Infrastructure cost-cutting review last week — config values tuned"
+
+pre_fix_tests:
+  - "seq 1 5 | xargs -P5 -I{} curl -sf http://localhost:8080/products"
+post_fix_tests:
+  - "seq 1 10 | xargs -P10 -I{} curl -sf http://localhost:8080/products | wc -l | grep 10"
+  - "curl -sf http://localhost:8080/healthz | python3 -c \"import sys,json; assert json.load(sys.stdin)['status'] == 'ok'\""
