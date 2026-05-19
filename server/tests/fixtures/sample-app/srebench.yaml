@@ -1,0 +1,25 @@
+name: sample-app
+language: python
+source_root: server/tests/fixtures/sample-app
+commands:
+  build: docker build -t sentinel-sample-app server/tests/fixtures/sample-app
+  start: docker run -d --name sentinel-sample-app -p 5000:5000 sentinel-sample-app
+  stop: docker stop sentinel-sample-app && docker rm sentinel-sample-app
+  restart: docker restart sentinel-sample-app
+  test: curl -sf http://localhost:5000/healthz
+signals:
+  logs:
+    type: docker
+    service: sentinel-sample-app
+  metrics:
+    type: prometheus
+    url: http://localhost:5000/metrics
+  health:
+    type: http
+    url: http://localhost:5000/healthz
+    expect_status: 200
+endpoints:
+  - method: GET
+    path: /
+  - method: GET
+    path: /divide

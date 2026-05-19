@@ -1,0 +1,37 @@
+id: SAMPLE-0001
+title: "Division endpoint crashes on zero denominator (ZeroDivisionError)"
+app: sample-app
+category: code
+difficulty: easy
+inject:
+  - type: runtime_fault
+    command: "echo 'Bug is pre-existing in app.py'"
+ground_truth:
+  root_cause: "GET /divide does not validate b != 0, causing ZeroDivisionError when b=0"
+  fix_type: code_change
+  fix_diff: |
+    --- a/server/tests/fixtures/sample-app/app.py
+    +++ b/server/tests/fixtures/sample-app/app.py
+    @@ -26,6 +26,9 @@ def divide():
+         _metrics["divide_calls_total"] += 1
+         a = request.args.get("a", "0")
+         b = request.args.get("b", "1")
+    -    # BUG: no check for b == 0
+    -    result = int(a) / int(b)
+    +    if int(b) == 0:
+    +        return jsonify({"error": "division by zero"}), 400
+    +    result = int(a) / int(b)
+         return jsonify({"result": result})
+agent_sees:
+  alert: "Error rate spike: GET /divide returning 500 for requests with b=0"
+  symptoms:
+    - "errors_total counter incrementing"
+    - "HTTP 500 on GET /divide?a=10&b=0"
+    - "ZeroDivisionError: division by zero in logs"
+  recent_deploys:
+    - "No recent deploys — latent bug triggered by new client behavior"
+pre_fix_tests:
+  - "curl -sf http://localhost:5000/divide?a=10&b=0"
+post_fix_tests:
+  - "curl -sf http://localhost:5000/divide?a=10&b=2"
+  - "curl -s http://localhost:5000/divide?a=10&b=0 | python3 -c \"import sys,json; d=json.load(sys.stdin); assert 'error' in d\""
