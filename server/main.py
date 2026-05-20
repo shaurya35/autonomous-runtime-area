@@ -12,7 +12,13 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from sentinel.vitals import VitalSimulator
+from sentinel.agent import SentinelAgent
+from sentinel.channel import IncidentChannel
+from sentinel.adapters.factory import make_log_source, make_metric_source, make_health_probe, make_runtime
+from sentinel.tools import ToolRegistry
 from srebench.schema import AppManifest, load_incident, load_manifest
+from srebench.injector import Injector
+from srebench.scorer import Scorer, IncidentResult
 
 REPO_ROOT    = Path(__file__).parent.parent
 APPS_DIR     = REPO_ROOT / "apps"
@@ -20,23 +26,26 @@ EVIDENCE_DIR = Path(__file__).parent / "evidence"
 RESULTS_DIR  = Path(__file__).parent / "results"
 
 
-def _discover_apps() -> dict[str, AppManifest]:
+def _discover_apps() -> tuple[dict[str, AppManifest], dict[str, Path]]:
     apps: dict[str, AppManifest] = {}
+    app_dirs: dict[str, Path] = {}
     if not APPS_DIR.exists():
-        return apps
+        return apps, app_dirs
     for p in APPS_DIR.iterdir():
         manifest_file = p / "srebench.yaml"
         if manifest_file.exists():
             try:
-                apps[p.name] = load_manifest(manifest_file)
+                manifest = load_manifest(p)
+                apps[manifest.name] = manifest
+                app_dirs[manifest.name] = p
             except Exception:
                 continue
-    return apps
+    return apps, app_dirs
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.apps = _discover_apps()
+    app.state.apps, app.state.app_dirs = _discover_apps()
     app.state.vital_sims = {name: VitalSimulator(name) for name in app.state.apps}
     app.state.incidents: dict[str, dict] = {}
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,7 +70,7 @@ def health():
 @app.get("/apps")
 def list_apps():
     return [
-        {"name": name, "description": m.description, "language": m.language, "tags": m.tags}
+        {"name": name, "language": m.language}
         for name, m in app.state.apps.items()
     ]
 
@@ -173,9 +182,14 @@ class StartIncidentBody(BaseModel):
 
 
 @app.post("/incidents/start")
-def start_incident(body: StartIncidentBody):
+async def start_incident(body: StartIncidentBody):
     if body.app not in app.state.apps:
         raise HTTPException(404, f"App '{body.app}' not found")
+
+    incident_path = app.state.app_dirs[body.app] / "incidents" / f"{body.incident_id}.yaml"
+    if not incident_path.exists():
+        raise HTTPException(404, f"Incident spec '{body.incident_id}' not found for app '{body.app}'")
+
     run_id = str(uuid.uuid4())
     record = {
         "run_id": run_id,
@@ -185,7 +199,62 @@ def start_incident(body: StartIncidentBody):
         "started_at": time.time(),
     }
     app.state.incidents[run_id] = record
-    (EVIDENCE_DIR / f"{run_id}.jsonl").touch()
+
+    manifest = app.state.apps[body.app]
+    spec = load_incident(incident_path)
+    channel = IncidentChannel(run_id, body.incident_id, EVIDENCE_DIR)
+    manifest_dict = manifest.model_dump()
+    log_source = make_log_source(manifest_dict["signals"])
+    metric_source = make_metric_source(manifest_dict["signals"])
+    health_probe = make_health_probe(manifest_dict["signals"])
+    runtime = make_runtime(manifest_dict, REPO_ROOT)
+    registry = ToolRegistry(manifest_dict, log_source, metric_source, health_probe, runtime, REPO_ROOT)
+    agent = SentinelAgent(tools=registry.definitions(), channel=channel)
+
+    brief = (
+        f"INCIDENT: {spec.id} — {spec.title}\n"
+        f"App: {body.app} ({manifest.language})\n"
+        f"Alert: {spec.agent_sees.alert}\n"
+        f"Symptoms:\n" + "\n".join(f"  - {s}" for s in spec.agent_sees.symptoms)
+    )
+
+    injector = Injector(manifest, REPO_ROOT)
+
+    async def run_agent():
+        try:
+            await injector.inject(spec)
+        except Exception as e:
+            app.state.incidents[run_id]["status"] = "failed"
+            app.state.incidents[run_id]["error"] = f"inject failed: {e}"
+            return
+        try:
+            result = await agent.run(brief, registry.execute)
+            scorer = Scorer()
+            phases = result.get("phases_reached", [])
+            post_ok = await scorer.run_tests(spec.post_fix_tests) if spec.post_fix_tests else False
+            incident_result = IncidentResult(
+                run_id=run_id,
+                incident_id=body.incident_id,
+                detected="detecting" in phases,
+                diagnosed="diagnosing" in phases,
+                fixed=post_ok,
+                mttr_s=result.get("mttr_s", 0),
+                phases_reached=phases,
+                post_tests_passed=post_ok,
+            )
+            incident_result.score = scorer.score(incident_result)
+            final = {**record, "status": "done", **incident_result.model_dump()}
+            app.state.incidents[run_id].update({"status": "done", "score": incident_result.score,
+                                                 "mttr_s": incident_result.mttr_s,
+                                                 "phases_reached": phases})
+            (RESULTS_DIR / f"{run_id}.json").write_text(json.dumps(final))
+        except Exception as e:
+            app.state.incidents[run_id]["status"] = "failed"
+            app.state.incidents[run_id]["error"] = str(e)
+        finally:
+            await injector.reset(spec)
+
+    asyncio.create_task(run_agent())
     return record
 
 

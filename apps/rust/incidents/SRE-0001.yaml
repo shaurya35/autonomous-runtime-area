@@ -10,11 +10,7 @@ inject:
     diff: |
       --- a/src/routes/auth.rs
       +++ b/src/routes/auth.rs
-      @@ -104,9 +104,7 @@ async fn login(
-           let email = body
-               .email
-               .filter(|e| !e.is_empty())
-               .ok_or_else(|| AppError::BadRequest("email is required".to_string()))?;
+      @@ -99,4 +99,1 @@ async fn login(
       -    // Use Option<String> for password — not unwrap
       -    let password: Option<String> = body.password.filter(|p| !p.is_empty());
       -    let password = password
@@ -31,12 +27,9 @@ ground_truth:
   fix_diff: |
     --- a/src/routes/auth.rs
     +++ b/src/routes/auth.rs
-    @@ -104,7 +104,9 @@ async fn login(
-         let email = body
-             .email
-             .filter(|e| !e.is_empty())
-             .ok_or_else(|| AppError::BadRequest("email is required".to_string()))?;
+    @@ -99,1 +99,4 @@ async fn login(
     -    let password = body.password.clone().unwrap();
+    +    // Use Option<String> for password — not unwrap
     +    let password: Option<String> = body.password.filter(|p| !p.is_empty());
     +    let password = password
     +        .ok_or_else(|| AppError::BadRequest("password is required".to_string()))?;

@@ -28,9 +28,9 @@ export function TreatmentHistory({ runs }: Props) {
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-doctor)" }}>{r.incident_id}</span>
           <span style={{ flex: 1 }} />
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", fontWeight: 700, color: scoreColor(r.score) }}>
-            {r.score !== null ? r.score.toFixed(2) : "—"}
+            {r.score != null ? r.score.toFixed(2) : "—"}
           </span>
-          {r.mttr_s !== null && (
+          {r.mttr_s != null && (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{r.mttr_s}s</span>
           )}
           <span style={{ fontSize: "0.75rem", color: r.status === "done" ? "var(--color-healthy)" : r.status === "failed" ? "var(--color-critical)" : "var(--color-watch)" }}>

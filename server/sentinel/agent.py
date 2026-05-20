@@ -9,9 +9,29 @@ from anthropic import Anthropic
 from sentinel.channel import IncidentChannel, Phase
 from sentinel.policy import Policy
 
+# Truncate tool result strings to keep context manageable
+_MAX_TOOL_RESULT_CHARS = 4000
+
+
+def _trim(result: dict) -> str:
+    s = json.dumps(result)
+    if len(s) <= _MAX_TOOL_RESULT_CHARS:
+        return s
+    # For known large fields, trim the content
+    if "content" in result and isinstance(result["content"], str):
+        trimmed = dict(result)
+        trimmed["content"] = result["content"][:_MAX_TOOL_RESULT_CHARS] + "\n... [truncated]"
+        return json.dumps(trimmed)
+    if "logs" in result and isinstance(result["logs"], list):
+        trimmed = dict(result)
+        trimmed["logs"] = result["logs"][-50:]  # keep last 50 log lines
+        trimmed["_truncated"] = True
+        return json.dumps(trimmed)
+    return s[:_MAX_TOOL_RESULT_CHARS] + "... [truncated]"
+
 
 class SentinelAgent:
-    MAX_ITERATIONS = 30
+    MAX_ITERATIONS = 25
 
     def __init__(self, tools: list[dict], channel: IncidentChannel, policy: Policy | None = None):
         self.client = Anthropic()
@@ -31,13 +51,27 @@ class SentinelAgent:
         phases_reached: set[str] = set()
         current_phase: Phase = "detecting"
 
-        for _ in range(self.MAX_ITERATIONS):
+        # Cache the system prompt — stays static for the whole run
+        system_with_cache = [
+            {
+                "type": "text",
+                "text": self._system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+        for iteration in range(self.MAX_ITERATIONS):
+            # Cache the tools list on first call; cache the growing message history
+            # by marking the last user message as ephemeral after turn 2
+            extra_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
+
             response = self.client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
-                system=self._system,
+                max_tokens=2048,
+                system=system_with_cache,
                 tools=self.tools,
                 messages=messages,
+                extra_headers=extra_headers,
             )
 
             messages.append({"role": "assistant", "content": response.content})
@@ -53,7 +87,7 @@ class SentinelAgent:
             if response.stop_reason == "end_turn":
                 self.channel.emit("done", "summary", {
                     "phases_reached": list(phases_reached),
-                    "mttr_s": time.time() - start_time,
+                    "mttr_s": round(time.time() - start_time, 1),
                 })
                 break
 
@@ -71,10 +105,13 @@ class SentinelAgent:
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": json.dumps(result),
+                        "content": _trim(result),
                     })
 
             if tool_results:
                 messages.append({"role": "user", "content": tool_results})
 
-        return {"phases_reached": list(phases_reached), "mttr_s": time.time() - start_time}
+        return {
+            "phases_reached": list(phases_reached),
+            "mttr_s": round(time.time() - start_time, 1),
+        }

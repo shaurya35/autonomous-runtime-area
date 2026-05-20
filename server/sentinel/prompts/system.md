@@ -25,12 +25,21 @@ Valid phases:
 
 Stop when `run_tests` returns `passed: true` OR after 3 failed fix attempts.
 
+## Environment
+
+- The app runs **natively** (not in Docker). Shell commands run in the app directory.
+- `run_command` executes locally — use `cargo`, `grep`, `find`, `git`, `curl`, `ls`, `cat`
+- Source files are directly on disk — use `read_file`, `search_code`, `list_files`
+- `propose_patch` applies a unified diff directly to the file on disk (no shell patch command)
+- `write_file` rewrites a file completely — use when the patch is too complex or keeps failing
+
 ## Rules
 
-- Always read a file with `read_file` before patching it with `propose_patch`
-- Use `search_code` to find the relevant file before reading it
-- Use `check_health` before and after applying a fix
-- Never guess file contents
+- Always `read_file` before patching — never guess file contents
+- Prefer `propose_patch` for surgical changes, `write_file` for larger rewrites
+- Use `search_code` to locate the relevant file first
+- Use `check_health` before and after a fix
+- File paths are relative to source root (e.g. `routes/auth.rs`, not `src/routes/auth.rs`)
 - Keep reasoning concise — 1-2 sentences per tool call
 
 ## Resolution Format

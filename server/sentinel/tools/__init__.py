@@ -7,7 +7,7 @@ from sentinel.tools.patch import PatchTools
 
 class ToolRegistry:
     def __init__(self, manifest_dict: dict, log_source, metric_source, health_probe, runtime, repo_root: Path):
-        source_root = Path(manifest_dict.get("source_root", "."))
+        source_root = (repo_root / manifest_dict.get("source_root", ".")).resolve()
         self._signals = SignalTools(log_source, metric_source, health_probe)
         self._code = CodeTools(source_root)
         self._exec = ExecTools(runtime, manifest_dict)

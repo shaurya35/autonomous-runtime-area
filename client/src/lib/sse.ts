@@ -6,32 +6,59 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function useIncidentStream(runId: string | null): ChannelEvent[] {
   const [events, setEvents] = useState<ChannelEvent[]>([]);
+  const esRef = useRef<EventSource | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneRef = useRef(false);
 
   useEffect(() => {
     if (!runId) return;
-    const es = new EventSource(`${API}/incidents/${runId}/stream`);
+    doneRef.current = false;
 
-    es.onmessage = (e) => {
-      try {
-        const raw = JSON.parse(e.data);
-        const p = raw.payload ?? {};
-        const ev: ChannelEvent = {
-          ...raw,
-          content: p.text ?? p.content ?? undefined,
-          tool_name: p.tool ?? undefined,
-          tool_input: p.input ?? undefined,
-          tool_result: p.result ?? undefined,
-        };
-        setEvents((prev) => [...prev, ev]);
-        if (ev.phase === "done" || ev.phase === "failed") es.close();
-      } catch {}
+    function connect() {
+      if (doneRef.current) return;
+      const es = new EventSource(`${API}/incidents/${runId}/stream`);
+      esRef.current = es;
+
+      es.onmessage = (e) => {
+        try {
+          const raw = JSON.parse(e.data);
+          const p = raw.payload ?? {};
+          const ev: ChannelEvent = {
+            ...raw,
+            content: p.text ?? p.content ?? undefined,
+            tool_name: p.tool ?? undefined,
+            tool_input: p.input ?? undefined,
+            tool_result: p.result ?? undefined,
+          };
+          setEvents((prev) => {
+            // dedupe by ts+type
+            const key = `${ev.ts}-${ev.type}`;
+            if (prev.some(x => `${x.ts}-${x.type}` === key)) return prev;
+            return [...prev, ev];
+          });
+          if (ev.phase === "done" || ev.phase === "failed") {
+            doneRef.current = true;
+            es.close();
+          }
+        } catch {}
+      };
+
+      es.onerror = () => {
+        es.close();
+        if (!doneRef.current) {
+          // retry after 2s — EventSource will replay from offset 0 (backend re-streams file)
+          retryRef.current = setTimeout(connect, 2000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      doneRef.current = true;
+      esRef.current?.close();
+      if (retryRef.current) clearTimeout(retryRef.current);
     };
-
-    es.onerror = () => {
-      es.close();
-    };
-
-    return () => es.close();
   }, [runId]);
 
   return events;
@@ -67,6 +94,7 @@ export function useAppVitals(name: string | null): VitalSigns | null {
         });
       } catch {}
     };
+    es.onerror = () => {};
     return () => es.close();
   }, [name]);
 

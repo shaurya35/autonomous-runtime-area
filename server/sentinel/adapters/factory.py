@@ -1,20 +1,30 @@
+import shutil
 from pathlib import Path
 from sentinel.adapters.logs.base import LogSource
 from sentinel.adapters.logs.docker import DockerLogSource
 from sentinel.adapters.logs.file import FileLogSource
+from sentinel.adapters.logs.process import ProcessLogSource
 from sentinel.adapters.metrics.base import MetricSource
 from sentinel.adapters.metrics.prometheus import PrometheusMetricSource
 from sentinel.adapters.health.base import HealthProbe
 from sentinel.adapters.health.http import HttpHealthProbe
 from sentinel.adapters.runtime.base import Runtime
 from sentinel.adapters.runtime.docker_compose import DockerComposeRuntime
+from sentinel.adapters.runtime.local import LocalRuntime
+
+
+def _docker_available() -> bool:
+    return shutil.which("docker") is not None
 
 
 def make_log_source(signals: dict) -> LogSource:
     logs = signals.get("logs", {})
     if logs.get("type") == "file":
         return FileLogSource(path=logs["path"])
-    return DockerLogSource(service=logs.get("service", "app"))
+    if logs.get("type") == "docker" and _docker_available():
+        return DockerLogSource(service=logs.get("service", "app"))
+    health_url = signals.get("health", {}).get("url")
+    return ProcessLogSource(health_url=health_url)
 
 
 def make_metric_source(signals: dict) -> MetricSource:
@@ -27,5 +37,9 @@ def make_health_probe(signals: dict) -> HealthProbe:
 
 
 def make_runtime(manifest: dict, repo_root: Path) -> Runtime:
-    service = manifest.get("signals", {}).get("logs", {}).get("service", "app")
-    return DockerComposeRuntime(service=service, project_dir=str(repo_root))
+    if _docker_available():
+        service = manifest.get("signals", {}).get("logs", {}).get("service", "app")
+        return DockerComposeRuntime(service=service, project_dir=str(repo_root))
+    source_root = repo_root / manifest.get("source_root", ".")
+    app_dir = source_root.parent if source_root.name == "src" else source_root
+    return LocalRuntime(app_dir=app_dir)

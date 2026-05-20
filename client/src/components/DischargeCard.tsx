@@ -75,11 +75,11 @@ export function DischargeCard({ run, onDismiss }: Props) {
         }}
       >
         <style>{`@keyframes springIn { from { transform: scale(0.6); opacity:0; } to { transform: scale(1); opacity:1; } }`}</style>
-        <BadgeCheck size={48} color="var(--color-healthy)" style={{ margin: "0 auto 1rem" }} />
+        <BadgeCheck size={48} color={targetScore > 0 ? "var(--color-healthy)" : "var(--color-critical)"} style={{ margin: "0 auto 1rem" }} />
         <div style={{ fontFamily: "var(--font-display)", fontSize: "1rem", fontWeight: 700, color: "var(--color-text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.5rem" }}>
-          Patient Discharged
+          {run.status === "failed" || targetScore === 0 ? "Incident Closed" : "Patient Discharged"}
         </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: "3.5rem", fontWeight: 700, color: "var(--color-healthy)", lineHeight: 1, marginBottom: "0.5rem" }}>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "3.5rem", fontWeight: 700, color: targetScore > 0 ? "var(--color-healthy)" : "var(--color-critical)", lineHeight: 1, marginBottom: "0.5rem" }}>
           {displayScore.toFixed(2)}
         </div>
         <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "1.5rem" }}>Recovery rate</div>
@@ -87,8 +87,8 @@ export function DischargeCard({ run, onDismiss }: Props) {
         <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: "1.5rem" }}>
           {PHASES.map(p => (
             <div key={p} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.75rem" }}>
-              <span style={{ color: run.phases_reached.includes(p) ? "var(--color-healthy)" : "var(--color-text-dim)" }}>
-                {run.phases_reached.includes(p) ? "✓" : "○"}
+              <span style={{ color: run.phases_reached?.includes(p) ? "var(--color-healthy)" : "var(--color-text-dim)" }}>
+                {run.phases_reached?.includes(p) ? "✓" : "○"}
               </span>
               <span style={{ color: "var(--color-text-secondary)", textTransform: "capitalize" }}>{p}</span>
             </div>
@@ -96,8 +96,12 @@ export function DischargeCard({ run, onDismiss }: Props) {
         </div>
 
         <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-          Resolved in <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-primary)" }}>{mttr}s</span>
-          {" · "}Human baseline {HUMAN_BASELINE} · <span style={{ color: "var(--color-healthy)" }}>{speedup}× faster</span>
+          {mttr > 0 ? (
+            <>Resolved in <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-primary)" }}>{mttr}s</span>
+            {" · "}Human baseline {HUMAN_BASELINE} · <span style={{ color: "var(--color-healthy)" }}>{speedup}× faster</span></>
+          ) : (
+            <span style={{ color: "var(--color-critical)" }}>Agent could not resolve — review logs above</span>
+          )}
         </div>
 
         <div style={{ marginTop: "1rem", fontSize: "0.6875rem", color: "var(--color-text-dim)" }}>Click anywhere or press Esc to dismiss</div>

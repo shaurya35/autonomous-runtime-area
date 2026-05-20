@@ -34,8 +34,8 @@ export function AdmissionsTable({ runs }: Props) {
             <td style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-doctor)" }}>{r.run_id.slice(0, 8)}</td>
             <td style={{ padding: "8px 12px", color: "var(--color-text-secondary)" }}>{r.app}</td>
             <td style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>{r.incident_id}</td>
-            <td style={{ padding: "8px 12px", color: scoreColor(r.score), fontWeight: 600, fontFamily: "var(--font-mono)" }}>{r.score !== null ? r.score.toFixed(2) : "—"}</td>
-            <td style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{r.mttr_s !== null ? `${r.mttr_s}s` : "—"}</td>
+            <td style={{ padding: "8px 12px", color: scoreColor(r.score), fontWeight: 600, fontFamily: "var(--font-mono)" }}>{r.score != null ? r.score.toFixed(2) : "—"}</td>
+            <td style={{ padding: "8px 12px", fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{r.mttr_s != null ? `${r.mttr_s}s` : "—"}</td>
             <td style={{ padding: "8px 12px" }}>
               <span style={{ color: r.status === "done" ? "var(--color-healthy)" : r.status === "failed" ? "var(--color-critical)" : "var(--color-watch)", fontSize: "0.75rem" }}>
                 {r.status}

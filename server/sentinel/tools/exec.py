@@ -1,4 +1,4 @@
-ALLOWED = ["cargo", "pytest", "python", "curl", "ls", "cat", "grep", "find", "git diff", "git log", "docker"]
+ALLOWED = ["cargo", "pytest", "python", "curl", "ls", "cat", "grep", "find", "git"]
 
 
 class ExecTools:

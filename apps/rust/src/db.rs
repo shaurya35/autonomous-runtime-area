@@ -25,9 +25,13 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
+        let connect_opts = config.database_url
+            .parse::<sqlx::sqlite::SqliteConnectOptions>()?
+            .create_if_missing(true);
+
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(config.pool_max_connections)
-            .connect(&config.database_url)
+            .connect_with(connect_opts)
             .await?;
 
         let stripe = StripeClient::new(&config.stripe_api_url, &config.stripe_api_key);
