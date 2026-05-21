@@ -32,8 +32,8 @@ export default async function LeaderboardPage() {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>Hospital Scoreboard</h1>
-        <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+        <h1 style={{ fontFamily: "var(--font-mono)", fontSize: "0.9375rem", fontWeight: 500, margin: 0, color: "var(--color-text-primary)" }}>leaderboard</h1>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {data.incident_ids.length} incidents · {data.rows.length} apps
         </div>
       </div>
@@ -48,8 +48,8 @@ export default async function LeaderboardPage() {
         </div>
       )}
 
-      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "0.875rem" }}>
+      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: "var(--text-caption)", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
           Benchmark Results
         </div>
         <LeaderboardClient rows={data.rows} incidentIds={data.incident_ids} />

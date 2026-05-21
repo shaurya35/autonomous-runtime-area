@@ -1,22 +1,15 @@
 "use client";
 import { useState } from "react";
-import { Syringe } from "lucide-react";
+import { Syringe, Activity, Clock, AlertTriangle } from "lucide-react";
 import type { AppSummary, IncidentMeta, VitalSigns, Status } from "../lib/api";
 import { injectIncident, startIncidentRun } from "../lib/api";
 import { StatusPill } from "./StatusPill";
 import { Sparkline } from "./Sparkline";
-import { HeartbeatIcon } from "./HeartbeatIcon";
 
-const LANG_EMOJI: Record<string, string> = {
-  rust: "🦀", python: "🐍", go: "🐹", node: "🟢", java: "☕", ruby: "💎",
+const LANG_COLOR: Record<string, string> = {
+  rust: "#f97316", python: "#3b82f6", go: "#06b6d4",
+  node: "#22c55e", java: "#f59e0b", ruby: "#ef4444",
 };
-
-function bpmFromStatus(status: Status): number {
-  if (status === "critical") return 180;
-  if (status === "watch") return 100;
-  if (status === "recovering") return 70;
-  return 60;
-}
 
 interface Props {
   app: AppSummary;
@@ -29,9 +22,8 @@ interface Props {
 export function PatientCard({ app, vitals, status, incidents, onAction }: Props) {
   const [selectedIncident, setSelectedIncident] = useState(incidents[0]?.id ?? "");
   const [loading, setLoading] = useState(false);
-  const bpm = bpmFromStatus(status);
   const lang = app.language?.toLowerCase() ?? "unknown";
-  const emoji = LANG_EMOJI[lang] ?? "📦";
+  const langColor = LANG_COLOR[lang] ?? "var(--color-text-muted)";
 
   const v = vitals?.vitals;
   const lastRps = v?.req_per_sec.at(-1) ?? 0;
@@ -54,24 +46,25 @@ export function PatientCard({ app, vitals, status, incidents, onAction }: Props)
     }
   }
 
+  const borderColor = status === "critical" ? "var(--color-critical)" : status === "watch" ? "var(--color-warn)" : "var(--color-border-soft)";
   const cardStyle: React.CSSProperties = {
     background: "var(--color-bg-elevated)",
-    border: `1px solid ${status === "critical" ? "#ef444455" : status === "watch" ? "#f59e0b33" : "var(--color-border-soft)"}`,
-    borderRadius: 12,
+    border: `1px solid ${borderColor}`,
+    borderLeft: status === "critical" ? `2px solid var(--color-critical)` : status === "watch" ? `2px solid var(--color-warn)` : `1px solid var(--color-border-soft)`,
+    borderRadius: 6,
     padding: "1rem",
     cursor: "pointer",
-    transition: "border-color 600ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms ease",
-    boxShadow: status === "critical" ? "0 0 20px #ef444422" : undefined,
+    transition: "border-color 200ms ease",
   };
 
   return (
     <div style={cardStyle} onClick={() => window.location.href = `/apps/${app.name}`}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: "1.5rem" }}>{emoji}</span>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: langColor, flexShrink: 0 }} />
           <div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--color-text-primary)" }}>{app.name}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{lang}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: "0.875rem", color: "var(--color-text-primary)" }}>{app.name}</div>
+            <div style={{ fontSize: "0.6875rem", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{lang}</div>
           </div>
         </div>
         <StatusPill status={status} size="sm" />
@@ -79,18 +72,18 @@ export function PatientCard({ app, vitals, status, incidents, onAction }: Props)
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: "0.75rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <HeartbeatIcon bpm={bpm} size={13} />
-          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70 }}>{lastRps.toFixed(0)} req/s</span>
-          <Sparkline data={v?.req_per_sec ?? []} width={80} height={20} color="var(--color-doctor)" thresholds={{}} />
+          <Activity size={12} color="var(--color-text-muted)" />
+          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70, fontFamily: "var(--font-mono)" }}>{lastRps.toFixed(0)} req/s</span>
+          <Sparkline data={v?.req_per_sec ?? []} width={80} height={20} color="var(--color-accent)" thresholds={{}} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: "0.75rem" }}>🩺</span>
-          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70 }}>{lastP99.toFixed(0)} ms</span>
-          <Sparkline data={v?.p99_latency_ms ?? []} width={80} height={20} color="var(--color-watch)" thresholds={{ warn: 200, crit: 500 }} />
+          <Clock size={12} color="var(--color-text-muted)" />
+          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70, fontFamily: "var(--font-mono)" }}>{lastP99.toFixed(0)} ms</span>
+          <Sparkline data={v?.p99_latency_ms ?? []} width={80} height={20} color="var(--color-warn)" thresholds={{ warn: 200, crit: 500 }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: "0.75rem" }}>🌡</span>
-          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70 }}>{lastErr.toFixed(2)}%</span>
+          <AlertTriangle size={12} color="var(--color-text-muted)" />
+          <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", width: 70, fontFamily: "var(--font-mono)" }}>{lastErr.toFixed(2)}%</span>
           <Sparkline data={v?.error_rate_pct ?? []} width={80} height={20} color="var(--color-critical)" thresholds={{ warn: 0.5, crit: 5 }} />
         </div>
       </div>
@@ -116,7 +109,7 @@ export function PatientCard({ app, vitals, status, incidents, onAction }: Props)
         </div>
       )}
 
-      <div style={{ marginTop: 6, fontSize: "0.6875rem", color: "var(--color-text-dim)" }}>{app.source_root}</div>
+      <div style={{ marginTop: 6, fontSize: "0.6875rem", color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>{app.source_root}</div>
     </div>
   );
 }

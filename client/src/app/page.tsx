@@ -30,7 +30,7 @@ export default async function WardPage() {
 
       {apps.length === 0 && (
         <div style={{ color: "var(--color-text-muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
-          No patients yet. Add a <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem" }}>srebench.yaml</code> under <code style={{ fontFamily: "var(--font-mono)" }}>apps/</code> to admit one.
+          No apps yet. Add a <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem" }}>sentinel.yaml</code> under <code style={{ fontFamily: "var(--font-mono)" }}>apps/</code> to register one.
         </div>
       )}
 
@@ -40,8 +40,10 @@ export default async function WardPage() {
         ))}
       </div>
 
-      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "0.875rem" }}>Recent Cases</div>
+      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: "var(--text-caption)", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          Recent Runs
+        </div>
         <AdmissionsTable runs={runs} />
       </div>
     </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
 import type { IncidentRun } from "@/lib/api";
 
 interface Props {
@@ -9,11 +8,10 @@ interface Props {
   currentPhase?: string;
 }
 
-const PHASE_COLORS: Record<string, string> = {
-  detecting:  "var(--color-phase-detect)",
-  diagnosing: "var(--color-phase-diagnose)",
-  fixing:     "var(--color-phase-treat)",
-  verifying:  "var(--color-phase-verify)",
+const STATUS_COLOR: Record<string, string> = {
+  running: "var(--color-warn)",
+  done:    "var(--color-success)",
+  failed:  "var(--color-critical)",
 };
 
 export function OrHeader({ run, currentPhase }: Props) {
@@ -32,33 +30,55 @@ export function OrHeader({ run, currentPhase }: Props) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0.75rem 1.5rem",
+      padding: "0 1.5rem", height: 52,
       background: "var(--color-bg-panel)",
       borderBottom: "1px solid var(--color-border-soft)",
+      flexShrink: 0,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Activity size={16} color="var(--color-doctor)" />
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--color-text-muted)" }}>CASE</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--color-doctor)" }}>{run.run_id.slice(0, 8)}</span>
-        <span style={{ color: "var(--color-border-strong)" }}>·</span>
-        <span style={{ color: "var(--color-text-secondary)", fontSize: "0.8125rem" }}>{run.app}</span>
-        <span style={{ color: "var(--color-border-strong)" }}>·</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{run.incident_id}</span>
+      {/* Left: run meta */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)",
+      }}>
+        <span style={{ color: "var(--color-accent)" }}>{run.run_id.slice(0, 8)}</span>
+        <span style={{ color: "var(--color-text-dim)" }}>·</span>
+        <span style={{ color: "var(--color-text-secondary)" }}>{run.app}</span>
+        <span style={{ color: "var(--color-text-dim)" }}>·</span>
+        <span style={{ color: "var(--color-text-muted)" }}>{run.incident_id}</span>
       </div>
+
+      {/* Right: phase + timer + status */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {currentPhase && (
           <span style={{
-            fontSize: "0.75rem", padding: "2px 8px", borderRadius: 999,
-            background: `${PHASE_COLORS[currentPhase] ?? "#6f7a98"}22`,
-            color: PHASE_COLORS[currentPhase] ?? "#6f7a98",
-            border: `1px solid ${PHASE_COLORS[currentPhase] ?? "#6f7a98"}44`,
-            textTransform: "capitalize",
-          }}>{currentPhase}</span>
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-caption)",
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-accent)",
+            padding: "2px 8px",
+            border: "1px solid rgba(34,211,238,0.35)",
+            borderRadius: 4,
+          }}>
+            {currentPhase}
+          </span>
         )}
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "1rem", fontWeight: 700, color: run.status === "running" ? "var(--color-watch)" : "var(--color-text-primary)" }}>
+        <span style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "1rem",
+          fontWeight: 600,
+          color: run.status === "running" ? "var(--color-warn)" : "var(--color-text-primary)",
+          letterSpacing: "0.04em",
+        }}>
           {mm}:{ss}
         </span>
-        <span style={{ fontSize: "0.75rem", color: run.status === "done" ? "var(--color-healthy)" : run.status === "failed" ? "var(--color-critical)" : "var(--color-watch)" }}>
+        <span style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "var(--text-caption)",
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          color: STATUS_COLOR[run.status] ?? "var(--color-text-muted)",
+        }}>
           {run.status}
         </span>
       </div>

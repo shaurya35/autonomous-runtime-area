@@ -2,33 +2,46 @@
 
 @theme {
   /* Surfaces */
-  --color-bg-primary:   #0a1226;
-  --color-bg-panel:     #131b30;
-  --color-bg-elevated:  #1c2540;
-  --color-bg-subtle:    #0f1729;
+  --color-bg-primary:   #0a0a0a;
+  --color-bg-panel:     #111111;
+  --color-bg-elevated:  #161616;
+  --color-bg-subtle:    #0d0d0d;
 
   /* Borders */
-  --color-border-soft:   #2a3553;
-  --color-border-strong: #3d4a6e;
+  --color-border-soft:   #1f1f1f;
+  --color-border-strong: #2a2a2a;
 
   /* Text */
-  --color-text-primary:   #ffffff;
-  --color-text-secondary: #b4bdd4;
-  --color-text-muted:     #6f7a98;
-  --color-text-dim:       #4a536d;
+  --color-text-primary:   #fafafa;
+  --color-text-secondary: #a3a3a3;
+  --color-text-muted:     #525252;
+  --color-text-dim:       #363636;
 
-  /* Semantic / status */
-  --color-healthy:   #10b981;
-  --color-watch:     #f59e0b;
-  --color-critical:  #ef4444;
-  --color-recovery:  #34d399;
-  --color-doctor:    #3b82f6;
+  /* Semantic / status — 4 colors only */
+  --color-accent:   #22d3ee;
+  --color-success:  #10b981;
+  --color-warn:     #f59e0b;
+  --color-critical: #ef4444;
 
-  /* Phase accents */
-  --color-phase-detect:   #60a5fa;
-  --color-phase-diagnose: #fbbf24;
-  --color-phase-treat:    #fb923c;
-  --color-phase-verify:   #34d399;
+  /* Keep legacy aliases so existing components don't break */
+  --color-healthy:  #10b981;
+  --color-watch:    #f59e0b;
+  --color-recovery: #10b981;
+  --color-doctor:   #22d3ee;
+
+  /* Phase accents — all map to 3 states */
+  --color-phase-detect:   #22d3ee;
+  --color-phase-diagnose: #f59e0b;
+  --color-phase-treat:    #22d3ee;
+  --color-phase-verify:   #10b981;
+
+  /* Type scale */
+  --text-display: 2rem;
+  --text-h1:      1.375rem;
+  --text-h2:      1.0625rem;
+  --text-body:    0.875rem;
+  --text-sm:      0.8125rem;
+  --text-caption: 0.6875rem;
 
   /* Typography */
   --font-display: "Inter Tight", sans-serif;
