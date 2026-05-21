@@ -1,6 +1,12 @@
 # ── Runtime output ─────────────────────────────────────────────────────────────
 evidence/
 results/
+sentinel.db
+sentinel.db-shm
+sentinel.db-wal
+
+# ── Real-product test workspace (onboard your own app here, not committed) ──────
+test-apps/
 
 # ── Secrets ────────────────────────────────────────────────────────────────────
 .env

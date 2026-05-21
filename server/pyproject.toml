@@ -18,4 +18,12 @@ dependencies = [
     "sse-starlette>=3.4.4",
     "uvicorn>=0.47.0",
     "anthropic>=0.103.1",
+    "bcrypt>=4.0.0",
+    "itsdangerous>=2.1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "e2e: end-to-end test that requires ANTHROPIC_API_KEY and the bundled shop-api running on :8080",
 ]

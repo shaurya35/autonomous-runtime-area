@@ -24,7 +24,7 @@ export interface ChannelEvent {
   run_id: string;
   incident_id: string;
   phase: Phase;
-  type: "thought" | "tool_call" | "tool_result" | "error" | "score" | "summary";
+  type: "thought" | "tool_call" | "tool_result" | "error" | "score" | "summary" | "pending_approval";
   payload: Record<string, unknown>;
   // Convenience fields extracted from payload for component use
   content?: string;

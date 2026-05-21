@@ -1,12 +1,17 @@
 import asyncio
 import json
+import logging
+import os
+import shutil
+import subprocess
 import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -16,6 +21,13 @@ from sentinel.agent import SentinelAgent
 from sentinel.channel import IncidentChannel
 from sentinel.adapters.factory import make_log_source, make_metric_source, make_health_probe, make_runtime
 from sentinel.tools import ToolRegistry
+from sentinel.db import init_db, get_workspace_by_id
+from sentinel.routes.auth import router as auth_router, require_user
+from sentinel.routes.workspaces import router as workspaces_router
+from sentinel.agent_hub import handle_agent_connection
+from sentinel.remote_tools import RemoteToolRouter
+from sentinel.detector import AnomalyDetector
+from sentinel.pending_patch import PendingPatchStore
 from srebench.schema import AppManifest, load_incident, load_manifest
 from srebench.injector import Injector
 from srebench.scorer import Scorer, IncidentResult
@@ -43,14 +55,49 @@ def _discover_apps() -> tuple[dict[str, AppManifest], dict[str, Path]]:
     return apps, app_dirs
 
 
+log = logging.getLogger("sentinel.boot")
+
+
+def _preflight() -> None:
+    """Fail fast on missing prerequisites. Runs in lifespan before serving."""
+    if os.getenv("SENTINEL_SKIP_PREFLIGHT") == "1":
+        return
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY not set. Copy .env.example to .env and fill it in, "
+            "or export ANTHROPIC_API_KEY in your shell before starting the server."
+        )
+    if shutil.which("docker"):
+        try:
+            r = subprocess.run(
+                ["docker", "info"], capture_output=True, timeout=5, check=False,
+            )
+            if r.returncode != 0:
+                log.warning(
+                    "docker CLI is present but `docker info` failed; "
+                    "runtime will fall back to LocalRuntime which cannot run the bundled shop-api. "
+                    "Stderr: %s",
+                    r.stderr.decode(errors="replace").strip(),
+                )
+        except Exception as e:
+            log.warning("docker preflight check raised %s: %s", type(e).__name__, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _preflight()
+    app.state.db = init_db()
     app.state.apps, app.state.app_dirs = _discover_apps()
     app.state.vital_sims = {name: VitalSimulator(name) for name in app.state.apps}
     app.state.incidents: dict[str, dict] = {}
+    app.state.agents: dict[int, object] = {}        # workspace_id → WSConnection (Phase 3)
+    app.state.ws_events: dict[int, asyncio.Queue] = {}  # workspace_id → event queue
+    app.state.detector = AnomalyDetector(app.state)
+    app.state.patch_store = PendingPatchStore()
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     yield
+    app.state.db.close()
 
 
 app = FastAPI(title="SREBench Server", lifespan=lifespan)
@@ -59,7 +106,15 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
+app.include_router(auth_router)
+app.include_router(workspaces_router)
+
+
+@app.websocket("/agent/connect")
+async def agent_connect(websocket: WebSocket):
+    await handle_agent_connection(websocket, app.state)
 
 
 @app.get("/health")
@@ -224,6 +279,10 @@ async def start_incident(body: StartIncidentBody):
         try:
             await injector.inject(spec)
         except Exception as e:
+            channel.emit("failed", "error", {
+                "text": f"inject failed: {type(e).__name__}: {e}",
+                "traceback": traceback.format_exc(),
+            })
             app.state.incidents[run_id]["status"] = "failed"
             app.state.incidents[run_id]["error"] = f"inject failed: {e}"
             return
@@ -249,13 +308,122 @@ async def start_incident(body: StartIncidentBody):
                                                  "phases_reached": phases})
             (RESULTS_DIR / f"{run_id}.json").write_text(json.dumps(final))
         except Exception as e:
+            channel.emit("failed", "error", {
+                "text": f"agent crashed: {type(e).__name__}: {e}",
+                "traceback": traceback.format_exc(),
+            })
             app.state.incidents[run_id]["status"] = "failed"
             app.state.incidents[run_id]["error"] = str(e)
         finally:
-            await injector.reset(spec)
+            try:
+                await injector.reset(spec)
+            except Exception as e:
+                channel.emit("failed", "error", {
+                    "text": f"reset failed: {type(e).__name__}: {e}",
+                })
 
     asyncio.create_task(run_agent())
     return record
+
+
+@app.post("/workspaces/{ws_id}/incidents/start")
+async def start_workspace_incident(ws_id: int, body: StartIncidentBody, request):
+    """Start an incident against a real workspace's connected agent."""
+    user = require_user(request)
+    db = request.app.state.db
+    ws = get_workspace_by_id(db, ws_id)
+    if not ws or ws["user_id"] != user["id"]:
+        raise HTTPException(404, "Workspace not found.")
+
+    conn = app.state.agents.get(ws_id)
+    if conn is None:
+        raise HTTPException(503, "No agent connected for this workspace. "
+                                 "Start the Sentinel sidecar (docker compose up sentinel-agent).")
+
+    run_id = str(uuid.uuid4())
+    record = {
+        "run_id": run_id,
+        "workspace_id": ws_id,
+        "incident_id": body.incident_id,
+        "status": "running",
+        "started_at": time.time(),
+    }
+    app.state.incidents[run_id] = record
+    channel = IncidentChannel(run_id, body.incident_id, EVIDENCE_DIR)
+    conn.channels[run_id] = channel
+
+    remote = RemoteToolRouter(
+        conn=conn,
+        workspace=dict(ws),
+        channel=channel,
+        db=app.state.db,
+        patch_store=app.state.patch_store,
+    )
+    agent = SentinelAgent(tools=remote.definitions(), channel=channel)
+    brief = f"INCIDENT: {body.incident_id}\nWorkspace: {ws_id}\n{body.app or ''}"
+
+    async def run_ws_agent():
+        try:
+            result = await agent.run(brief, remote.execute)
+            phases = result.get("phases_reached", [])
+            app.state.incidents[run_id].update({
+                "status": "done",
+                "phases_reached": phases,
+                "mttr_s": result.get("mttr_s", 0),
+            })
+        except Exception as e:
+            channel.emit("failed", "error", {
+                "text": f"agent crashed: {type(e).__name__}: {e}",
+                "traceback": traceback.format_exc(),
+            })
+            app.state.incidents[run_id]["status"] = "failed"
+            app.state.incidents[run_id]["error"] = str(e)
+        finally:
+            conn.channels.pop(run_id, None)
+
+    asyncio.create_task(run_ws_agent())
+    return record
+
+
+@app.post("/workspaces/{ws_id}/incidents/{run_id}/approve")
+async def approve_patch(ws_id: int, run_id: str, request):
+    user = require_user(request)
+    db = request.app.state.db
+    ws = get_workspace_by_id(db, ws_id)
+    if not ws or ws["user_id"] != user["id"]:
+        raise HTTPException(404, "Workspace not found.")
+    # Find the pending diff for this run
+    row = db.execute(
+        "SELECT diff_id FROM pending_patches WHERE run_id = ? AND status = 'pending'",
+        (run_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "No pending patch found for this run.")
+    diff_id = row["diff_id"]
+    resolved = app.state.patch_store.resolve(diff_id, {"approved": True})
+    if not resolved:
+        raise HTTPException(409, "Patch was already resolved.")
+    return {"approved": True, "diff_id": diff_id}
+
+
+@app.post("/workspaces/{ws_id}/incidents/{run_id}/reject")
+async def reject_patch(ws_id: int, run_id: str, request):
+    user = require_user(request)
+    db = request.app.state.db
+    ws = get_workspace_by_id(db, ws_id)
+    if not ws or ws["user_id"] != user["id"]:
+        raise HTTPException(404, "Workspace not found.")
+    row = db.execute(
+        "SELECT diff_id FROM pending_patches WHERE run_id = ? AND status = 'pending'",
+        (run_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "No pending patch found for this run.")
+    diff_id = row["diff_id"]
+    resolved = app.state.patch_store.reject(diff_id)
+    if not resolved:
+        raise HTTPException(409, "Patch was already resolved.")
+    return {"rejected": True, "diff_id": diff_id}
 
 
 @app.get("/incidents")

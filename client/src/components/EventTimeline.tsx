@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChannelEvent } from "@/lib/api";
 import { ToolCallRow } from "@/components/ToolCallRow";
+import { PendingApprovalCard } from "@/components/PendingApprovalCard";
 
 type DisplayItem =
   | { kind: "phase-divider"; phase: string; startTs: number; endTs?: number }
   | { kind: "thought"; event: ChannelEvent }
   | { kind: "tool-pair"; call: ChannelEvent; result?: ChannelEvent; isPatch: boolean }
-  | { kind: "error"; event: ChannelEvent };
+  | { kind: "error"; event: ChannelEvent }
+  | { kind: "pending-approval"; event: ChannelEvent };
 
 function buildDisplayItems(events: ChannelEvent[]): DisplayItem[] {
   const items: DisplayItem[] = [];
@@ -50,6 +52,8 @@ function buildDisplayItems(events: ChannelEvent[]): DisplayItem[] {
       }
     } else if (ev.type === "error") {
       items.push({ kind: "error", event: ev });
+    } else if (ev.type === "pending_approval") {
+      items.push({ kind: "pending-approval", event: ev });
     }
   }
 
@@ -72,9 +76,11 @@ function fmtDuration(start: number, end?: number): string {
 interface Props {
   events: ChannelEvent[];
   isRunning: boolean;
+  workspaceId?: number;
+  runId?: string;
 }
 
-export function EventTimeline({ events, isRunning }: Props) {
+export function EventTimeline({ events, isRunning, workspaceId, runId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -229,6 +235,21 @@ export function EventTimeline({ events, isRunning }: Props) {
                 }}>
                   {item.event.content ?? JSON.stringify(item.event.payload ?? {})}
                 </span>
+              </div>
+            );
+          }
+
+          if (item.kind === "pending-approval" && workspaceId && runId) {
+            const p = item.event.payload ?? {};
+            return (
+              <div key={i} style={{ padding: "0.5rem 0 0.5rem 50px" }}>
+                <PendingApprovalCard
+                  workspaceId={workspaceId}
+                  runId={runId}
+                  diffId={String(p.diff_id ?? "")}
+                  file={String(p.file ?? "")}
+                  diff={String(p.diff ?? "")}
+                />
               </div>
             );
           }

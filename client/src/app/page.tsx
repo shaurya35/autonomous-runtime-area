@@ -1,50 +1,59 @@
-import { getApps, getIncidents, getAppIncidents, getAppVitals, deriveStatus } from "../lib/api";
-import { WardHeader } from "../components/WardHeader";
-import { PatientCard } from "../components/PatientCard";
-import { AdmissionsTable } from "../components/AdmissionsTable";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
-export default async function WardPage() {
-  const [apps, runs] = await Promise.all([
-    getApps().catch(() => []),
-    getIncidents().catch(() => []),
-  ]);
-
-  const appData = await Promise.all(
-    apps.map(async (app) => {
-      const [incidents, vitals] = await Promise.all([
-        getAppIncidents(app.name).catch(() => []),
-        getAppVitals(app.name, { since: 60, simulate: true }).catch(() => null),
-      ]);
-      const status = deriveStatus(vitals);
-      return { app, incidents, vitals, status };
-    })
-  );
-
-  const activeIncidents = runs.filter(r => r.status === "running").length;
-
+export default function LandingPage() {
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "1.5rem" }}>
-      <WardHeader appCount={apps.length} activeIncidents={activeIncidents} />
+    <div style={{ maxWidth: 640, margin: "8rem auto", padding: "0 1.5rem", fontFamily: "var(--font-mono)" }}>
+      <h1 style={{ fontSize: "1.5rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--color-text-primary)" }}>
+        sentinel
+      </h1>
+      <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-body)", marginBottom: "2.5rem", lineHeight: 1.6 }}>
+        Autonomous SRE agent that detects, diagnoses, and fixes production incidents.<br />
+        Connects to your own services — no code changes required.
+      </p>
 
-      {apps.length === 0 && (
-        <div style={{ color: "var(--color-text-muted)", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
-          No apps yet. Add a <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem" }}>sentinel.yaml</code> under <code style={{ fontFamily: "var(--font-mono)" }}>apps/</code> to register one.
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-        {appData.map(({ app, incidents, vitals, status }) => (
-          <PatientCard key={app.name} app={app} vitals={vitals} status={status} incidents={incidents} />
-        ))}
+      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+        <Link
+          href="/signup"
+          style={{
+            background: "var(--color-accent)",
+            color: "#000",
+            padding: "0.5rem 1.25rem",
+            borderRadius: 4,
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-sm)",
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          Get early access
+        </Link>
+        <Link
+          href="/demo"
+          style={{
+            border: "1px solid var(--color-border-strong)",
+            color: "var(--color-text-secondary)",
+            padding: "0.5rem 1.25rem",
+            borderRadius: 4,
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--text-sm)",
+            textDecoration: "none",
+          }}
+        >
+          Try the benchmark →
+        </Link>
       </div>
 
-      <div style={{ background: "var(--color-bg-panel)", border: "1px solid var(--color-border-soft)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ padding: "0.75rem 1rem", borderBottom: "1px solid var(--color-border-soft)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: "var(--text-caption)", color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          Recent Runs
-        </div>
-        <AdmissionsTable runs={runs} />
+      <div style={{ marginTop: "4rem", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.5rem" }}>
+        {[
+          { label: "Auto-detect", desc: "Monitors health + error rate; creates incidents automatically" },
+          { label: "Diagnose", desc: "Reads logs, metrics, and source code to find the root cause" },
+          { label: "Patch + approve", desc: "Proposes a fix inline; you click Approve before anything changes" },
+        ].map(({ label, desc }) => (
+          <div key={label}>
+            <div style={{ color: "var(--color-accent)", fontSize: "var(--text-sm)", marginBottom: "0.4rem", fontWeight: 500 }}>{label}</div>
+            <div style={{ color: "var(--color-text-muted)", fontSize: "var(--text-caption)", lineHeight: 1.6 }}>{desc}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

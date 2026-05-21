@@ -1,5 +1,5 @@
 .PHONY: help setup install dev server client test test-server test-rust \
-        up down logs run-incident inject score reset demo
+        up down logs run-incident inject score reset demo doctor
 
 # ── default ────────────────────────────────────────────────────────────────────
 help:
@@ -8,6 +8,7 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    make setup          One-time install: uv + Python 3.13 + all deps"
+	@echo "    make doctor         Verify local environment is ready for make dev"
 	@echo ""
 	@echo "  Local dev (no Docker)"
 	@echo "    make dev            Start server (port 8000) + dashboard (port 3000)"
@@ -43,11 +44,15 @@ setup:
 	@echo "→ Creating .env from template..."
 	@test -f .env || cp .env.example .env
 	@echo ""
-	@echo "  Done. Edit .env and set ANTHROPIC_API_KEY, then run: make dev"
+	@echo "  Done. Edit .env and set ANTHROPIC_API_KEY, then run: make doctor && make dev"
 	@echo ""
 
+# ── doctor (preflight) ─────────────────────────────────────────────────────────
+doctor:
+	@./scripts/doctor.sh
+
 # ── local dev ──────────────────────────────────────────────────────────────────
-dev:
+dev: doctor
 	@$(MAKE) -j2 server client
 
 server:

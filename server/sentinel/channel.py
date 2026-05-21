@@ -13,7 +13,7 @@ class ChannelEvent(BaseModel):
     run_id: str
     incident_id: str
     phase: Phase
-    type: Literal["thought", "tool_call", "tool_result", "score", "summary"]
+    type: Literal["thought", "tool_call", "tool_result", "score", "summary", "error", "pending_approval"]
     payload: dict
 
 
