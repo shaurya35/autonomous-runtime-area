@@ -1,5 +1,5 @@
 .PHONY: help setup install dev server client test test-server test-rust \
-        up down logs run-incident inject score reset demo doctor
+        up down logs run-incident inject score reset demo doctor e2e e2e-agent
 
 # ── default ────────────────────────────────────────────────────────────────────
 help:
@@ -19,6 +19,8 @@ help:
 	@echo "    make test           Run all test suites (server + rust)"
 	@echo "    make test-server    Run Python server tests"
 	@echo "    make test-rust      Run Rust shop-api integration tests"
+	@echo "    make e2e            Full E2E: start services, test all flows (~30s)"
+	@echo "    make e2e-agent      E2E + live agent run against SRE-0001 (~2 min, ~\$$0.10)"
 	@echo ""
 	@echo "  Incidents"
 	@echo "    make run-incident APP=shop-api ID=SRE-0001"
@@ -92,6 +94,13 @@ reset:
 	rm -rf evidence/* results/*
 	mkdir -p evidence results
 	@echo "Cleared evidence/ and results/."
+
+# ── e2e ───────────────────────────────────────────────────────────────────────
+e2e:
+	@./scripts/e2e.sh
+
+e2e-agent:
+	@./scripts/e2e.sh --agent
 
 # ── docker ─────────────────────────────────────────────────────────────────────
 up:

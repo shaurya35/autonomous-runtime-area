@@ -1,4 +1,5 @@
 from pathlib import Path
+from sentinel.safety import safe_join
 
 MAX_FILES, MAX_LINES, MAX_MATCHES = 100, 300, 50
 
@@ -46,8 +47,7 @@ class CodeTools:
         ]
 
     def _safe(self, rel: str) -> Path | None:
-        p = (self._root / rel).resolve()
-        return p if str(p).startswith(str(self._root)) else None
+        return safe_join(self._root, rel)
 
     async def execute(self, name: str, inputs: dict) -> dict:
         if name == "list_files":
@@ -70,14 +70,23 @@ class CodeTools:
 
         elif name == "search_code":
             pattern = inputs.get("pattern", "").lower()
+            glob = inputs.get("glob", "**/*")
+            if _unsafe_glob(glob):
+                return {"error": "glob escapes source root"}
             matches = []
-            for p in self._root.glob(inputs.get("glob", "**/*")):
+            for p in self._root.glob(glob):
                 if not p.is_file(): continue
                 try:
+                    rel = p.resolve().relative_to(self._root)
                     for i, line in enumerate(p.read_text(errors="replace").splitlines(), 1):
                         if pattern in line.lower():
-                            matches.append({"file": str(p.relative_to(self._root)), "line": i, "content": line.strip()})
+                            matches.append({"file": str(rel), "line": i, "content": line.strip()})
                             if len(matches) >= MAX_MATCHES: return {"matches": matches, "truncated": True}
                 except Exception: continue
             return {"matches": matches}
         return {"error": f"unknown: {name}"}
+
+
+def _unsafe_glob(glob: str) -> bool:
+    p = Path(glob)
+    return p.is_absolute() or any(part == ".." for part in p.parts)

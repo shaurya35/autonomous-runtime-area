@@ -1,22 +1,22 @@
 import json
+import time
 import uuid
 from pathlib import Path
 
 
 _FAKE_EVENTS = [
-    {"type": "phase", "phase": "detecting", "ts": 0.0},
-    {"type": "thought", "content": "Checking error rate spike on shop-api.", "ts": 1.2},
-    {"type": "tool_call", "tool": "get_logs", "args": {"app": "shop-api"}, "ts": 2.5},
-    {"type": "tool_result", "tool": "get_logs", "content": "ERROR: NullPointerException in OrderService", "ts": 3.1},
-    {"type": "phase", "phase": "diagnosing", "ts": 4.0},
-    {"type": "thought", "content": "Root cause: missing null check in OrderService.process()", "ts": 5.3},
-    {"type": "phase", "phase": "fixing", "ts": 6.0},
-    {"type": "tool_call", "tool": "apply_patch", "args": {"file": "src/OrderService.java"}, "ts": 7.1},
-    {"type": "tool_result", "tool": "apply_patch", "content": "Patch applied successfully", "ts": 8.0},
-    {"type": "phase", "phase": "verifying", "ts": 9.0},
-    {"type": "tool_call", "tool": "run_tests", "args": {}, "ts": 10.0},
-    {"type": "tool_result", "tool": "run_tests", "content": "All tests passed", "ts": 13.5},
-    {"type": "done", "score": 0.95, "mttr_s": 14, "ts": 14.0},
+    ("detecting", "thought", {"text": "Alert received: login endpoint is returning 500s after the latest request."}, 0.0),
+    ("detecting", "tool_call", {"tool": "read_logs", "input": {"since_seconds": 60}}, 1.2),
+    ("detecting", "tool_result", {"tool": "read_logs", "result": {"logs": ["thread 'tokio-runtime-worker' panicked at src/routes/auth.rs: called `Option::unwrap()` on a None value"]}}, 2.4),
+    ("diagnosing", "thought", {"text": "The failure is isolated to the auth route when the password field is missing."}, 3.6),
+    ("diagnosing", "tool_call", {"tool": "read_file", "input": {"path": "apps/rust/src/routes/auth.rs"}}, 4.2),
+    ("diagnosing", "tool_result", {"tool": "read_file", "result": {"content": "let password = body.password.unwrap();"}}, 5.5),
+    ("fixing", "thought", {"text": "Replace the unsafe unwrap with validation that returns a 400 response."}, 7.0),
+    ("fixing", "tool_call", {"tool": "propose_patch", "input": {"file": "apps/rust/src/routes/auth.rs"}}, 8.1),
+    ("fixing", "tool_result", {"tool": "propose_patch", "result": {"success": True, "summary": "Added missing-password validation."}}, 9.2),
+    ("verifying", "tool_call", {"tool": "run_tests", "input": {"cmd": "cargo test --manifest-path apps/rust/Cargo.toml"}}, 10.1),
+    ("verifying", "tool_result", {"tool": "run_tests", "result": {"returncode": 0, "stdout": "5 passed"}}, 13.0),
+    ("done", "summary", {"score": 0.95, "mttr_s": 14, "text": "Incident resolved. Login now rejects malformed requests without crashing."}, 14.0),
 ]
 
 
@@ -31,7 +31,18 @@ class DemoSeeder:
         if fixture.exists():
             (evidence_dir / f"{run_id}.jsonl").write_text(fixture.read_text())
         else:
-            lines = [json.dumps(e) for e in _FAKE_EVENTS]
+            start = time.time()
+            lines = [
+                json.dumps({
+                    "ts": start + offset,
+                    "run_id": run_id,
+                    "incident_id": "SRE-0001",
+                    "phase": phase,
+                    "type": event_type,
+                    "payload": payload,
+                })
+                for phase, event_type, payload, offset in _FAKE_EVENTS
+            ]
             (evidence_dir / f"{run_id}.jsonl").write_text("\n".join(lines) + "\n")
 
         result = {

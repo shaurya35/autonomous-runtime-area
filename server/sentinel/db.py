@@ -171,6 +171,14 @@ def set_app_connected(conn: sqlite3.Connection, workspace_id: int) -> None:
     conn.commit()
 
 
+def set_app_disconnected(conn: sqlite3.Connection, workspace_id: int) -> None:
+    conn.execute(
+        "UPDATE workspace_apps SET connected_at = NULL WHERE workspace_id = ?",
+        (workspace_id,),
+    )
+    conn.commit()
+
+
 def get_workspace_apps(conn: sqlite3.Connection, workspace_id: int) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM workspace_apps WHERE workspace_id = ?", (workspace_id,)

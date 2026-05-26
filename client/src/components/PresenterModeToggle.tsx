@@ -1,13 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Monitor } from "lucide-react";
 
 export function PresenterModeToggle() {
-  const [enabled, setEnabled] = useState(false);
-
-  useEffect(() => {
-    setEnabled(localStorage.getItem("presenterMode") === "1");
-  }, []);
+  const [enabled, setEnabled] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("presenterMode") === "1"
+  );
 
   function toggle() {
     const next = !enabled;

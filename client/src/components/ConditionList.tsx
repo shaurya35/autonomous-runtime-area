@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Syringe } from "lucide-react";
 import type { IncidentMeta } from "../lib/api";
-import { startIncidentRun } from "../lib/api";
+import { startIncidentRun, injectIncident } from "../lib/api";
 
 interface Props {
   appName: string;
@@ -17,6 +17,7 @@ export function ConditionList({ appName, incidents }: Props) {
   async function handleAdmit(incidentId: string) {
     setLoading(incidentId);
     try {
+      await injectIncident(appName, incidentId);
       const run = await startIncidentRun(appName, incidentId);
       if (run.run_id) window.location.href = `/incidents/${run.run_id}`;
     } finally {

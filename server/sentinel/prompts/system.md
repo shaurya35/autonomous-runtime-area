@@ -27,20 +27,28 @@ Stop when `run_tests` returns `passed: true` OR after 3 failed fix attempts.
 
 ## Environment
 
-- The app runs **natively** (not in Docker). Shell commands run in the app directory.
-- `run_command` executes locally — use `cargo`, `grep`, `find`, `git`, `curl`, `ls`, `cat`
-- Source files are directly on disk — use `read_file`, `search_code`, `list_files`
-- `propose_patch` applies a unified diff directly to the file on disk (no shell patch command)
-- `write_file` rewrites a file completely — use when the patch is too complex or keeps failing
+- The app runs in **Docker** via docker-compose.
+- `run_command` executes inside the running container — if the service is down (exit code 1, "not running"), **switch to file tools immediately** (`read_file`, `search_code`, `list_files`).
+- File tools read files directly from the host filesystem — they always work even when the container is down.
+- `propose_patch` and `write_file` apply changes and automatically restart the service.
+
+## File Paths
+
+All file paths are **relative to the app directory** (one level above `src/`).
+
+Examples for a Rust app:
+- Source files: `src/main.rs`, `src/routes/auth.rs`, `src/config.rs`
+- Config files: `.env`, `Cargo.toml`
+
+For a config incident where `run_command` fails, go directly to `read_file(".env")` to inspect the environment configuration — do not keep retrying shell commands.
 
 ## Rules
 
 - Always `read_file` before patching — never guess file contents
 - Prefer `propose_patch` for surgical changes, `write_file` for larger rewrites
+- If `run_command` returns "service is not running", **stop using run_command** and use file tools instead
 - Use `search_code` to locate the relevant file first
 - Use `check_health` before and after a fix
-- File paths are relative to source root (e.g. `routes/auth.rs`, not `src/routes/auth.rs`)
-- Keep reasoning concise — 1-2 sentences per tool call
 
 ## Resolution Format
 

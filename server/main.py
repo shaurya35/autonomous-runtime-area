@@ -11,12 +11,20 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket
+from dotenv import load_dotenv
+
+# Load .env from repo root (two levels up from server/), then fall back to
+# server/.env. existing shell exports take priority (override=False).
+_repo_root = Path(__file__).parent.parent
+load_dotenv(_repo_root / ".env", override=False)
+load_dotenv(Path(__file__).parent / ".env", override=False)
+
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from sentinel.vitals import VitalSimulator
+from sentinel.vitals import VitalSimulator, VitalCollector
 from sentinel.agent import SentinelAgent
 from sentinel.channel import IncidentChannel
 from sentinel.adapters.factory import make_log_source, make_metric_source, make_health_probe, make_runtime
@@ -32,10 +40,10 @@ from srebench.schema import AppManifest, load_incident, load_manifest
 from srebench.injector import Injector
 from srebench.scorer import Scorer, IncidentResult
 
-REPO_ROOT    = Path(__file__).parent.parent
-APPS_DIR     = REPO_ROOT / "apps"
-EVIDENCE_DIR = Path(__file__).parent / "evidence"
-RESULTS_DIR  = Path(__file__).parent / "results"
+REPO_ROOT    = Path(os.getenv("REPO_ROOT", Path(__file__).parent.parent))
+APPS_DIR     = Path(os.getenv("APPS_DIR", REPO_ROOT / "apps"))
+EVIDENCE_DIR = Path(os.getenv("EVIDENCE_DIR", Path(__file__).parent / "evidence"))
+RESULTS_DIR  = Path(os.getenv("RESULTS_DIR", Path(__file__).parent / "results"))
 
 
 def _discover_apps() -> tuple[dict[str, AppManifest], dict[str, Path]]:
@@ -89,14 +97,27 @@ async def lifespan(app: FastAPI):
     app.state.db = init_db()
     app.state.apps, app.state.app_dirs = _discover_apps()
     app.state.vital_sims = {name: VitalSimulator(name) for name in app.state.apps}
+    app.state.vital_collector = VitalCollector(app.state.vital_sims, app.state.apps)
+    app.state.vital_collector.start()
     app.state.incidents: dict[str, dict] = {}
     app.state.agents: dict[int, object] = {}        # workspace_id → WSConnection (Phase 3)
     app.state.ws_events: dict[int, asyncio.Queue] = {}  # workspace_id → event queue
     app.state.detector = AnomalyDetector(app.state)
     app.state.patch_store = PendingPatchStore()
+    app.state.evidence_dir = EVIDENCE_DIR
+    app.state.results_dir = RESULTS_DIR
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    for _result_file in sorted(RESULTS_DIR.glob("*.json")):
+        try:
+            _data = json.loads(_result_file.read_text())
+            _run_id = _data.get("run_id") or _result_file.stem
+            if _run_id not in app.state.incidents:
+                app.state.incidents[_run_id] = _data
+        except Exception:
+            pass
     yield
+    app.state.vital_collector.stop()
     app.state.db.close()
 
 
@@ -162,18 +183,21 @@ def app_metrics(name: str):
 def list_app_incidents(name: str):
     if name not in app.state.apps:
         raise HTTPException(404, f"App '{name}' not found")
-    incidents_dir = APPS_DIR / name / "incidents"
+    incidents_dir = app.state.app_dirs[name] / "incidents"
     if not incidents_dir.exists():
         return []
     out = []
     for p in sorted(incidents_dir.glob("*.yaml")):
         try:
             inc = load_incident(p)
+            agent_sees = getattr(inc, "agent_sees", None)
             out.append({
                 "id": inc.id,
                 "title": inc.title,
                 "difficulty": inc.difficulty,
                 "category": inc.category,
+                "alert": getattr(agent_sees, "alert", None),
+                "symptoms": getattr(agent_sees, "symptoms", []) or [],
             })
         except Exception:
             continue
@@ -288,6 +312,14 @@ async def start_incident(body: StartIncidentBody):
             return
         try:
             result = await agent.run(brief, registry.execute)
+            if result.get("status") == "failed":
+                app.state.incidents[run_id].update({
+                    "status": "failed",
+                    "error": result.get("error", "agent_failed"),
+                    "mttr_s": result.get("mttr_s", 0),
+                    "phases_reached": result.get("phases_reached", []),
+                })
+                return
             scorer = Scorer()
             phases = result.get("phases_reached", [])
             post_ok = await scorer.run_tests(spec.post_fix_tests) if spec.post_fix_tests else False
@@ -327,7 +359,7 @@ async def start_incident(body: StartIncidentBody):
 
 
 @app.post("/workspaces/{ws_id}/incidents/start")
-async def start_workspace_incident(ws_id: int, body: StartIncidentBody, request):
+async def start_workspace_incident(ws_id: int, body: StartIncidentBody, request: Request):
     """Start an incident against a real workspace's connected agent."""
     user = require_user(request)
     db = request.app.state.db
@@ -365,6 +397,14 @@ async def start_workspace_incident(ws_id: int, body: StartIncidentBody, request)
     async def run_ws_agent():
         try:
             result = await agent.run(brief, remote.execute)
+            if result.get("status") == "failed":
+                app.state.incidents[run_id].update({
+                    "status": "failed",
+                    "error": result.get("error", "agent_failed"),
+                    "phases_reached": result.get("phases_reached", []),
+                    "mttr_s": result.get("mttr_s", 0),
+                })
+                return
             phases = result.get("phases_reached", [])
             app.state.incidents[run_id].update({
                 "status": "done",
@@ -386,7 +426,7 @@ async def start_workspace_incident(ws_id: int, body: StartIncidentBody, request)
 
 
 @app.post("/workspaces/{ws_id}/incidents/{run_id}/approve")
-async def approve_patch(ws_id: int, run_id: str, request):
+async def approve_patch(ws_id: int, run_id: str, request: Request):
     user = require_user(request)
     db = request.app.state.db
     ws = get_workspace_by_id(db, ws_id)
@@ -407,7 +447,7 @@ async def approve_patch(ws_id: int, run_id: str, request):
 
 
 @app.post("/workspaces/{ws_id}/incidents/{run_id}/reject")
-async def reject_patch(ws_id: int, run_id: str, request):
+async def reject_patch(ws_id: int, run_id: str, request: Request):
     user = require_user(request)
     db = request.app.state.db
     ws = get_workspace_by_id(db, ws_id)
@@ -434,8 +474,57 @@ def list_incidents():
 @app.get("/incidents/{run_id}")
 def get_incident(run_id: str):
     if run_id not in app.state.incidents:
+        result_file = RESULTS_DIR / f"{run_id}.json"
+        if result_file.exists():
+            try:
+                return json.loads(result_file.read_text())
+            except Exception:
+                pass
+    if run_id not in app.state.incidents:
         raise HTTPException(404, f"Run '{run_id}' not found")
     return app.state.incidents[run_id]
+
+
+@app.get("/incidents/{run_id}/report")
+async def download_report(run_id: str):
+    from fastapi.responses import Response as FastAPIResponse
+    from sentinel.report import generate_report_pdf
+
+    # Resolve run from memory or disk
+    run_data = app.state.incidents.get(run_id)
+    if run_data is None:
+        result_file = RESULTS_DIR / f"{run_id}.json"
+        if result_file.exists():
+            try:
+                run_data = json.loads(result_file.read_text())
+            except Exception:
+                pass
+    if run_data is None:
+        raise HTTPException(404, f"Run '{run_id}' not found")
+    if run_data.get("status") == "running":
+        raise HTTPException(400, "Report is only available for completed runs")
+    if run_data.get("workspace_id") is not None:
+        raise HTTPException(403, "Reports are available for benchmark runs only")
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    try:
+        pdf_bytes = generate_report_pdf(
+            run_id=run_id,
+            results_dir=RESULTS_DIR,
+            evidence_dir=EVIDENCE_DIR,
+            app_dirs=app.state.app_dirs,
+            anthropic_api_key=api_key,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Report generation failed: {e}")
+
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report-{run_id[:8]}.pdf"'},
+    )
 
 
 @app.get("/incidents/{run_id}/stream")
@@ -483,6 +572,13 @@ async def stream_incident(
                         offset += 1
                         yield {"data": line}
             if app.state.incidents.get(run_id, {}).get("status") in ("done", "failed"):
+                # Flush any events written between last read and status flip
+                if evidence_file.exists():
+                    lines = evidence_file.read_text().splitlines()
+                    for line in lines[offset:]:
+                        if line.strip():
+                            offset += 1
+                            yield {"data": line}
                 break
             await asyncio.sleep(0.5)
 
@@ -525,7 +621,7 @@ def leaderboard():
     mttr_values: list[float] = []
 
     for (app_name, inc_id), inc_runs in grouped.items():
-        difficulty = _get_difficulty(app_name, inc_id)
+        difficulty = _get_difficulty(app_name, inc_id, app.state.app_dirs)
         best = max((r.get("score", 0.0) for r in inc_runs), default=0.0)
         solved = best >= 0.7
         if difficulty == "easy":
@@ -559,8 +655,11 @@ def leaderboard():
     }
 
 
-def _get_difficulty(app_name: str, incident_id: str) -> str:
-    inc_path = APPS_DIR / app_name / "incidents" / f"{incident_id}.yaml"
+def _get_difficulty(app_name: str, incident_id: str, app_dirs: dict[str, Path] | None = None) -> str:
+    app_dir = (app_dirs or {}).get(app_name)
+    if app_dir is None:
+        return "unknown"
+    inc_path = app_dir / "incidents" / f"{incident_id}.yaml"
     if inc_path.exists():
         try:
             return load_incident(inc_path).difficulty
@@ -573,4 +672,15 @@ def _get_difficulty(app_name: str, incident_id: str) -> str:
 def demo_seed():
     from sentinel.seed import DemoSeeder
     run_id = DemoSeeder().seed(EVIDENCE_DIR, RESULTS_DIR, APPS_DIR)
+    result_file = RESULTS_DIR / f"{run_id}.json"
+    if result_file.exists():
+        try:
+            app.state.incidents[run_id] = json.loads(result_file.read_text())
+        except Exception:
+            app.state.incidents[run_id] = {
+                "run_id": run_id,
+                "app": "shop-api",
+                "incident_id": "SRE-0001",
+                "status": "done",
+            }
     return {"seeded": True, "run_id": run_id}

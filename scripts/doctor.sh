@@ -89,6 +89,21 @@ else
   c_warn "shop-api not running on :8080" "in another tab: cd apps/rust && cargo run  (only needed for the demo flow)"
 fi
 
+# 9. Docker/compose files are internally consistent
+if [ -f server/Dockerfile ] && [ -f client/Dockerfile ] && [ -f agent/Dockerfile ]; then
+  c_pass "server, client, and agent Dockerfiles exist"
+else
+  c_fail "one or more Dockerfiles missing" "expected server/Dockerfile, client/Dockerfile, and agent/Dockerfile"
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  if docker compose config >/dev/null 2>&1; then
+    c_pass "docker compose config is valid"
+  else
+    c_fail "docker compose config is invalid" "run: docker compose config"
+  fi
+fi
+
 section "Summary: $PASS pass, $FAIL fail, $WARN warn"
 
 if [ "$FAIL" -gt 0 ]; then

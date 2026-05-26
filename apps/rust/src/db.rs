@@ -2,6 +2,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
+use std::time::Duration;
 
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
@@ -27,13 +28,24 @@ impl AppState {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         let connect_opts = config.database_url
             .parse::<sqlx::sqlite::SqliteConnectOptions>()?
-            .create_if_missing(true);
+            .create_if_missing(true)
+            // WAL mode allows concurrent readers alongside a single writer,
+            // eliminating the file-level serialization that exhausts the pool
+            // when multiple requests arrive simultaneously.
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            // Give SQLite up to 5 s to acquire the write lock before returning
+            // SQLITE_BUSY.  Without this the default is 0 ms, so every
+            // concurrent write immediately fails and all pool connections pile
+            // up retrying — causing PoolTimedOut under moderate concurrency.
+            .busy_timeout(Duration::from_secs(5));
 
         let pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(config.pool_max_connections)
+            // Surface pool exhaustion quickly and clearly rather than letting
+            // callers hang for sqlx's default 30-second acquire timeout.
+            .acquire_timeout(Duration::from_secs(5))
             .connect_with(connect_opts)
             .await?;
-
         let stripe = StripeClient::new(&config.stripe_api_url, &config.stripe_api_key);
 
         Ok(AppState {

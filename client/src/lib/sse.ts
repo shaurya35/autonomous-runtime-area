@@ -4,7 +4,7 @@ import type { ChannelEvent, VitalSigns } from "./api";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export function useIncidentStream(runId: string | null): ChannelEvent[] {
+export function useIncidentStream(runId: string | null, replay = false): ChannelEvent[] {
   const [events, setEvents] = useState<ChannelEvent[]>([]);
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -16,7 +16,8 @@ export function useIncidentStream(runId: string | null): ChannelEvent[] {
 
     function connect() {
       if (doneRef.current) return;
-      const es = new EventSource(`${API}/incidents/${runId}/stream`);
+      const qs = replay ? "?replay=true&speed=4" : "";
+      const es = new EventSource(`${API}/incidents/${runId}/stream${qs}`);
       esRef.current = es;
 
       es.onmessage = (e) => {
@@ -31,9 +32,7 @@ export function useIncidentStream(runId: string | null): ChannelEvent[] {
             tool_result: p.result ?? undefined,
           };
           setEvents((prev) => {
-            // dedupe by ts+type
-            const key = `${ev.ts}-${ev.type}`;
-            if (prev.some(x => `${x.ts}-${x.type}` === key)) return prev;
+            if (prev.some(x => x.ts === ev.ts)) return prev;
             return [...prev, ev];
           });
           if (ev.phase === "done" || ev.phase === "failed") {
@@ -59,7 +58,7 @@ export function useIncidentStream(runId: string | null): ChannelEvent[] {
       esRef.current?.close();
       if (retryRef.current) clearTimeout(retryRef.current);
     };
-  }, [runId]);
+  }, [runId, replay]);
 
   return events;
 }

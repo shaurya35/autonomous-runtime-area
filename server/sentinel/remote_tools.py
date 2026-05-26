@@ -95,6 +95,7 @@ class RemoteToolRouter:
             self._conn.pending.pop(req_id, None)
             return {"error": f"tool '{name}' timed out after {self._timeout}s (agent may be hung)"}
         except RuntimeError as e:
+            self._conn.pending.pop(req_id, None)
             return {"error": str(e)}
 
     async def _pending_patch(self, name: str, args: dict) -> dict:
@@ -129,19 +130,42 @@ class RemoteToolRouter:
             update_patch_status(self._db, diff_id, "rejected")
             return {"error": "patch rejected by user", "rejected": True}
 
-        # User approved — send apply_patch to agent and wait for confirmation
+        # User approved — send the exact write operation to the agent and wait for confirmation.
         update_patch_status(self._db, diff_id, "applying")
         req_id = uuid.uuid4().hex
         loop = asyncio.get_event_loop()
         apply_fut: asyncio.Future = loop.create_future()
         self._conn.pending[req_id] = apply_fut
-        await self._conn.send({"kind": "apply_patch", "diff_id": diff_id, "req_id": req_id, "file": file, "diff": diff})
+        if name == "write_file":
+            await self._conn.send({
+                "kind": "write_file",
+                "diff_id": diff_id,
+                "req_id": req_id,
+                "file": file,
+                "content": diff,
+            })
+        else:
+            await self._conn.send({
+                "kind": "apply_patch",
+                "diff_id": diff_id,
+                "req_id": req_id,
+                "file": file,
+                "diff": diff,
+            })
 
         try:
             apply_result = await asyncio.wait_for(apply_fut, timeout=self._timeout)
-            update_patch_status(self._db, diff_id, "applied")
+            update_patch_status(
+                self._db,
+                diff_id,
+                "applied" if apply_result.get("success") else "failed",
+            )
             return apply_result
         except asyncio.TimeoutError:
             self._conn.pending.pop(req_id, None)
             update_patch_status(self._db, diff_id, "timeout")
             return {"error": "agent timed out applying the patch"}
+        except RuntimeError as e:
+            self._conn.pending.pop(req_id, None)
+            update_patch_status(self._db, diff_id, "failed")
+            return {"error": str(e)}

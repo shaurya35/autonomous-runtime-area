@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from pathlib import Path
 from sentinel.adapters.logs.base import LogSource
 from sentinel.adapters.logs.docker import DockerLogSource
@@ -14,7 +15,18 @@ from sentinel.adapters.runtime.local import LocalRuntime
 
 
 def _docker_available() -> bool:
-    return shutil.which("docker") is not None
+    if shutil.which("docker") is None:
+        return False
+    try:
+        return subprocess.run(
+            ["docker", "info"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        ).returncode == 0
+    except Exception:
+        return False
 
 
 def make_log_source(signals: dict) -> LogSource:

@@ -9,12 +9,14 @@ export interface AppSummary {
 export interface IncidentRun {
   run_id: string;
   app: string;
+  workspace_id?: number;
   incident_id: string;
   status: "running" | "done" | "failed";
   score: number | null;
   mttr_s: number | null;
-  phases_reached: string[];
-  stream_url: string;
+  phases_reached?: string[];
+  stream_url?: string;
+  started_at?: number;
 }
 
 export type Phase = "detecting" | "diagnosing" | "fixing" | "verifying" | "done" | "failed";
@@ -38,6 +40,8 @@ export interface IncidentMeta {
   title: string;
   difficulty: "easy" | "medium" | "hard";
   category: "code" | "config" | "resource" | "network" | "integration";
+  alert?: string;
+  symptoms?: string[];
 }
 
 export interface VitalSigns {
@@ -84,9 +88,17 @@ async function fetchJSON<T>(path: string): Promise<T> {
   }
 }
 
+async function fetchJSONStrict<T>(path: string): Promise<T> {
+  const r = await fetch(`${API}${path}`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
 export const getApps = () => fetchJSON<AppSummary[]>("/apps");
 export const getIncidents = () => fetchJSON<IncidentRun[]>("/incidents");
 export const getIncident = (id: string) => fetchJSON<IncidentRun>(`/incidents/${id}`);
+export const getAppsStrict = () => fetchJSONStrict<AppSummary[]>("/apps");
+export const getIncidentsStrict = () => fetchJSONStrict<IncidentRun[]>("/incidents");
 
 export async function startIncident(app: string, incident_id: string): Promise<IncidentRun> {
   const r = await fetch(`${API}/incidents/start`, {
@@ -94,6 +106,7 @@ export async function startIncident(app: string, incident_id: string): Promise<I
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ app, incident_id }),
   });
+  if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
@@ -131,5 +144,11 @@ export const startIncidentRun = (app: string, incidentId: string) =>
 export const getLeaderboard = () =>
   fetchJSON<LeaderboardData>(`/leaderboard`);
 
+export const getReportUrl = (runId: string) =>
+  `${API}/incidents/${runId}/report`;
+
 export const seedDemo = () =>
-  fetch(`${API}/demo/seed`, { method: "POST" }).then(r => r.json());
+  fetch(`${API}/demo/seed`, { method: "POST" }).then(async r => {
+    if (!r.ok) throw new Error(await r.text());
+    return r.json() as Promise<{ seeded: boolean; run_id: string }>;
+  });

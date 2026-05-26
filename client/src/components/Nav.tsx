@@ -37,6 +37,8 @@ export function Nav() {
           <Link href="/dashboard" style={navLink}>dashboard</Link>
           <Link href="/leaderboard" style={navLink}>leaderboard</Link>
           <Link href="/demo" style={navLink}>demo</Link>
+          <Link href="/runs" style={navLink}>runs</Link>
+          <Link href="/docs" style={navLink}>docs</Link>
           <span style={{ flex: 1 }} />
           <span style={{ ...navLink, color: "var(--color-text-dim)" }}>{user.email}</span>
           <button onClick={handleLogout} style={{ ...navLink, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
@@ -47,6 +49,8 @@ export function Nav() {
         <>
           <Link href="/demo" style={navLink}>benchmark</Link>
           <Link href="/leaderboard" style={navLink}>leaderboard</Link>
+          <Link href="/runs" style={navLink}>runs</Link>
+          <Link href="/docs" style={navLink}>docs</Link>
           <span style={{ flex: 1 }} />
           {user !== "loading" && (
             <>

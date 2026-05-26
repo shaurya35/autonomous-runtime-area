@@ -51,6 +51,9 @@ export function PendingApprovalCard({ workspaceId, runId, diffId, file, diff }: 
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)", color: "var(--color-text-secondary)", fontWeight: 500 }}>
           Proposed patch
         </span>
+        <code style={{ fontFamily: "var(--font-mono)", fontSize: "0.65rem", color: "var(--color-text-dim)" }}>
+          {diffId.slice(0, 8)}
+        </code>
         <code style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)", color: "var(--color-text-muted)", flex: 1 }}>
           {file}
         </code>

@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 import tempfile
 from sentinel.adapters.runtime.base import Runtime
 from sentinel.models import CommandResult, PatchResult
@@ -11,24 +12,24 @@ class DockerComposeRuntime(Runtime):
         self.project_dir = project_dir
 
     async def start(self) -> CommandResult:
-        return await self._run(f"docker compose -f {self.compose_file} up -d {self.service}")
+        return await self._run(f"docker compose -f {shlex.quote(self.compose_file)} up -d {shlex.quote(self.service)}")
 
     async def stop(self) -> CommandResult:
-        return await self._run(f"docker compose -f {self.compose_file} stop {self.service}")
+        return await self._run(f"docker compose -f {shlex.quote(self.compose_file)} stop {shlex.quote(self.service)}")
 
     async def restart(self) -> CommandResult:
-        return await self._run(f"docker compose -f {self.compose_file} restart {self.service}")
+        return await self._run(f"docker compose -f {shlex.quote(self.compose_file)} restart {shlex.quote(self.service)}")
 
     async def exec(self, cmd: str, timeout: int = 30) -> CommandResult:
         return await self._run(
-            f"docker compose -f {self.compose_file} exec -T {self.service} sh -c '{cmd}'",
+            f"docker compose -f {shlex.quote(self.compose_file)} exec -T {shlex.quote(self.service)} sh -c {shlex.quote(cmd)}",
             timeout=timeout)
 
     async def apply_patch(self, file_path: str, diff_text: str) -> PatchResult:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".patch", delete=False) as f:
             f.write(diff_text)
             patch_file = f.name
-        result = await self._run(f"patch -p1 {file_path} < {patch_file}")
+        result = await self._run(f"patch -p1 {shlex.quote(file_path)} < {shlex.quote(patch_file)}")
         if result.returncode != 0:
             return PatchResult(success=False, error=result.stderr)
         restart = await self.restart()

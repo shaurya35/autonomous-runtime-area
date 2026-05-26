@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMe, listWorkspaces, setActiveWorkspaceId, type Workspace } from "@/lib/auth";
+import { getMe, listWorkspaceApps, listWorkspaces, setActiveWorkspaceId, type Workspace } from "@/lib/auth";
 import { WardHeader } from "@/components/WardHeader";
 import { AdmissionsTable } from "@/components/AdmissionsTable";
 import { getIncidents } from "@/lib/api";
@@ -10,6 +10,7 @@ import type { IncidentRun } from "@/lib/api";
 export default function DashboardPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWs, setActiveWs] = useState<Workspace | null>(null);
+  const [connectedWorkspaces, setConnectedWorkspaces] = useState<Set<number>>(new Set());
   const [runs, setRuns] = useState<IncidentRun[]>([]);
   const [authed, setAuthed] = useState<boolean | null>(null);
 
@@ -26,6 +27,14 @@ export default function DashboardPage() {
       if (ws.length > 0) {
         setActiveWs(ws[0]);
         setActiveWorkspaceId(ws[0].id);
+        Promise.all(
+          ws.map(async w => {
+            const apps = await listWorkspaceApps(w.id).catch(() => []);
+            return [w.id, apps.some(a => a.connected_at != null)] as const;
+          })
+        ).then(results => {
+          setConnectedWorkspaces(new Set(results.filter(([, connected]) => connected).map(([id]) => id)));
+        });
       }
     }).catch(() => {});
     getIncidents().then(setRuns).catch(() => {});
@@ -53,7 +62,7 @@ export default function DashboardPage() {
   }
 
   const activeIncidents = runs.filter(r => r.status === "running").length;
-  const wsConnected = activeWs ? true : false;
+  const wsConnected = activeWs ? connectedWorkspaces.has(activeWs.id) : false;
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "1.5rem" }}>

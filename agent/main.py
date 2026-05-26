@@ -123,6 +123,7 @@ async def _tool_loop(ws, registry) -> None:
             await ws.send(json.dumps(response))
 
         elif kind == "apply_patch":
+            req_id = msg.get("req_id") or msg["diff_id"]
             diff_id = msg["diff_id"]
             file = msg["file"]
             diff = msg["diff"]
@@ -135,11 +136,38 @@ async def _tool_loop(ws, registry) -> None:
                     # restart the target service
                     from sentinel.adapters.runtime.docker_compose import DockerComposeRuntime
                     rt = DockerComposeRuntime(service=RESTART_TARGET, project_dir="/workspace")
-                    await rt.restart()
-                response = proto.tool_response(diff_id, result=result)
+                    restart = await rt.restart()
+                    result["restarted"] = restart.returncode == 0
+                    if restart.returncode != 0:
+                        result["success"] = False
+                        result["restart_error"] = restart.stderr
+                response = proto.tool_response(req_id, result=result)
             except Exception as e:
                 log.exception("apply_patch failed")
-                response = proto.tool_response(diff_id, error=str(e))
+                response = proto.tool_response(req_id, error=str(e))
+            await ws.send(json.dumps(response))
+
+        elif kind == "write_file":
+            req_id = msg.get("req_id") or msg["diff_id"]
+            diff_id = msg["diff_id"]
+            file = msg["file"]
+            content = msg["content"]
+            log.info("writing file %s (diff_id=%s)", file, diff_id)
+            try:
+                from sentinel.tools.patch import PatchTools
+                pt = PatchTools(None, REPO_PATH)
+                result = pt._write_file(file, content)
+                if result.get("success"):
+                    from sentinel.adapters.runtime.docker_compose import DockerComposeRuntime
+                    rt = DockerComposeRuntime(service=RESTART_TARGET, project_dir="/workspace")
+                    restart = await rt.restart()
+                    result["restarted"] = restart.returncode == 0
+                    if restart.returncode != 0:
+                        result["restart_error"] = restart.stderr
+                response = proto.tool_response(req_id, result=result)
+            except Exception as e:
+                log.exception("write_file failed")
+                response = proto.tool_response(req_id, error=str(e))
             await ws.send(json.dumps(response))
 
         elif kind == "restart":

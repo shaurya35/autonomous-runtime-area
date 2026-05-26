@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from sentinel.safety import safe_join
 
 
 class PatchTools:
@@ -43,14 +44,23 @@ class PatchTools:
 
     async def execute(self, name: str, inputs: dict) -> dict:
         if name == "propose_patch":
-            return self._apply_patch(inputs.get("file", ""), inputs.get("unified_diff", ""))
-        if name == "write_file":
-            return self._write_file(inputs.get("file", ""), inputs.get("content", ""))
-        return {"error": f"unknown: {name}"}
+            result = self._apply_patch(inputs.get("file", ""), inputs.get("unified_diff", ""))
+        elif name == "write_file":
+            result = self._write_file(inputs.get("file", ""), inputs.get("content", ""))
+        else:
+            return {"error": f"unknown: {name}"}
+        if result.get("success") and self._runtime is not None:
+            try:
+                restart = await self._runtime.restart()
+                result["restarted"] = restart.returncode == 0
+                if restart.returncode != 0:
+                    result["restart_stderr"] = restart.stderr[:300]
+            except Exception as e:
+                result["restart_error"] = str(e)
+        return result
 
     def _resolve(self, rel: str) -> Path | None:
-        p = (self._root / rel).resolve()
-        return p if str(p).startswith(str(self._root)) else None
+        return safe_join(self._root, rel)
 
     def _write_file(self, file: str, content: str) -> dict:
         target = self._resolve(file)
@@ -58,7 +68,12 @@ class PatchTools:
             return {"success": False, "error": "path escapes source root"}
         if not target.exists():
             return {"success": False, "error": f"file not found: {file}"}
-        target.write_text(content)
+        original = target.read_text()
+        try:
+            target.write_text(content)
+        except Exception as e:
+            target.write_text(original)
+            return {"success": False, "error": f"write failed: {e}"}
         return {"success": True, "file": file}
 
     def _apply_patch(self, file: str, diff_text: str) -> dict:
@@ -74,7 +89,11 @@ class PatchTools:
         except Exception as e:
             return {"success": False, "error": f"patch failed: {e}"}
 
-        target.write_text(patched)
+        try:
+            target.write_text(patched)
+        except Exception as e:
+            target.write_text(original)
+            return {"success": False, "error": f"write failed: {e}"}
         return {"success": True, "file": file}
 
 

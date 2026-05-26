@@ -11,6 +11,7 @@ agent → server:
 server → agent:
   tool_call      Ask the agent to execute a tool and send back tool_response.
   apply_patch    Agent should write a previously-negotiated diff and restart.
+  write_file     Agent should write previously-approved full file content and restart.
   restart        Agent should restart the target service.
   pong           Response to a heartbeat (used to measure latency).
 """
@@ -47,6 +48,10 @@ def tool_call(req_id: str, tool_name: str, args: dict) -> dict:
 
 def apply_patch(diff_id: str, file: str, diff: str) -> dict:
     return {"kind": "apply_patch", "diff_id": diff_id, "file": file, "diff": diff}
+
+
+def write_file(diff_id: str, file: str, content: str) -> dict:
+    return {"kind": "write_file", "diff_id": diff_id, "file": file, "content": content}
 
 
 def restart() -> dict:

@@ -13,7 +13,7 @@ export function LeaderboardClient({ rows, incidentIds }: Props) {
     <ScoreboardGrid
       rows={rows}
       incidentIds={incidentIds}
-      onCellClick={(app, _incidentId) => {
+      onCellClick={(app) => {
         router.push(`/apps/${app}`);
       }}
     />

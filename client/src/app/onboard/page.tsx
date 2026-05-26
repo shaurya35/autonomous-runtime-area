@@ -23,7 +23,6 @@ export default function OnboardPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [connected, setConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   // Step 5: SSE watching for agent_connected
@@ -35,7 +34,6 @@ export default function OnboardPage() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.kind === "agent_connected") {
-          setConnected(true);
           setStep(5);
           es.close();
         }

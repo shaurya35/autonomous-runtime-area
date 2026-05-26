@@ -6,13 +6,8 @@ difficulty: easy
 
 inject:
   - type: config_change
-    file: .env
-    diff: |
-      --- a/.env
-      +++ b/.env
-      @@ -4,7 +4,7 @@
-      -PORT=8080
-      +PORT=8081
+    env_var: PORT
+    value: "8081"
 
 ground_truth:
   root_cause: >

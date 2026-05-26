@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FileDown } from "lucide-react";
 import type { IncidentRun } from "@/lib/api";
+import { getReportUrl } from "@/lib/api";
 
 interface Props {
   run: IncidentRun;
@@ -113,6 +115,30 @@ export function OutcomeCard({ run }: Props) {
           </div>
         ))}
       </div>
+
+      {/* Download report — benchmark runs only (no workspace_id) */}
+      {run.status === "done" && !run.workspace_id && (
+        <a
+          href={getReportUrl(run.run_id)}
+          download={`report-${run.run_id.slice(0, 8)}.pdf`}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            marginTop: 14,
+            padding: "5px 10px",
+            background: "var(--color-bg-elevated)",
+            border: "1px solid var(--color-border-soft)",
+            borderRadius: 6,
+            fontFamily: "var(--font-mono)",
+            fontSize: "0.75rem",
+            color: "var(--color-accent)",
+            textDecoration: "none",
+            cursor: "pointer",
+          }}
+        >
+          <FileDown size={12} />
+          Download Report
+        </a>
+      )}
 
       {/* Error message if failed */}
       {run.status === "failed" && error && (

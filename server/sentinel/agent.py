@@ -65,14 +65,26 @@ class SentinelAgent:
             # by marking the last user message as ephemeral after turn 2
             extra_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
 
-            response = self.client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=2048,
-                system=system_with_cache,
-                tools=self.tools,
-                messages=messages,
-                extra_headers=extra_headers,
-            )
+            try:
+                response = self.client.messages.create(
+                    model="claude-sonnet-4-6",
+                    max_tokens=2048,
+                    system=system_with_cache,
+                    tools=self.tools,
+                    messages=messages,
+                    extra_headers=extra_headers,
+                )
+            except Exception as e:
+                self.channel.emit("failed", "error", {
+                    "text": f"anthropic request failed: {type(e).__name__}: {e}",
+                    "recoverable": False,
+                })
+                return {
+                    "status": "failed",
+                    "error": "anthropic_request_failed",
+                    "phases_reached": list(phases_reached),
+                    "mttr_s": round(time.time() - start_time, 1),
+                }
 
             messages.append({"role": "assistant", "content": response.content})
 
@@ -85,11 +97,16 @@ class SentinelAgent:
                     self.channel.emit(current_phase, "thought", {"text": block.text})
 
             if response.stop_reason == "end_turn":
+                mttr_s = round(time.time() - start_time, 1)
                 self.channel.emit("done", "summary", {
                     "phases_reached": list(phases_reached),
-                    "mttr_s": round(time.time() - start_time, 1),
+                    "mttr_s": mttr_s,
                 })
-                break
+                return {
+                    "status": "done",
+                    "phases_reached": list(phases_reached),
+                    "mttr_s": mttr_s,
+                }
 
             tool_results = []
             for block in response.content:
@@ -99,7 +116,13 @@ class SentinelAgent:
                     else:
                         self.channel.emit(current_phase, "tool_call",
                                           {"tool": block.name, "input": block.input})
-                        result = await tool_executor(block.name, block.input)
+                        try:
+                            result = await tool_executor(block.name, block.input)
+                        except Exception as e:
+                            result = {
+                                "error": f"{type(e).__name__}: {e}",
+                                "recoverable": True,
+                            }
                         self.channel.emit(current_phase, "tool_result",
                                           {"tool": block.name, "result": result})
                     tool_results.append({
@@ -111,7 +134,14 @@ class SentinelAgent:
             if tool_results:
                 messages.append({"role": "user", "content": tool_results})
 
+        self.channel.emit("failed", "error", {
+            "text": f"agent exceeded {self.MAX_ITERATIONS} iterations without finishing",
+            "reason": "max_iterations_exceeded",
+            "recoverable": False,
+        })
         return {
+            "status": "failed",
+            "error": "max_iterations_exceeded",
             "phases_reached": list(phases_reached),
             "mttr_s": round(time.time() - start_time, 1),
         }

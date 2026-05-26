@@ -11,16 +11,27 @@ import { IncidentContext } from "@/components/IncidentContext";
 import { VitalsPanel } from "@/components/VitalsPanel";
 import { OutcomeCard } from "@/components/OutcomeCard";
 
-export default function IncidentPage({ params }: { params: Promise<{ id: string }> }) {
+export default function IncidentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ replay?: string }>;
+}) {
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<IncidentRun | null>(null);
+  const [replay, setReplay] = useState(false);
 
-  const events = useIncidentStream(runId);
+  const events = useIncidentStream(runId, replay);
   const vitals = useAppVitals(run?.app ?? null);
 
   useEffect(() => {
     params.then(p => setRunId(p.id));
   }, [params]);
+
+  useEffect(() => {
+    searchParams.then(p => setReplay(p.replay === "1" || p.replay === "true"));
+  }, [searchParams]);
 
   // Initial fetch
   useEffect(() => {
@@ -66,7 +77,12 @@ export default function IncidentPage({ params }: { params: Promise<{ id: string 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
         {/* Event timeline — the centerpiece */}
-        <EventTimeline events={events} isRunning={isRunning} />
+        <EventTimeline
+          events={events}
+          isRunning={isRunning || replay}
+          workspaceId={run.workspace_id}
+          runId={run.run_id}
+        />
 
         {/* Right rail */}
         <div style={{

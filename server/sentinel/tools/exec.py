@@ -1,4 +1,7 @@
-ALLOWED = ["cargo", "pytest", "python", "curl", "ls", "cat", "grep", "find", "git"]
+from sentinel.safety import validate_agent_command
+
+
+ALLOWED = {"cargo", "pytest", "python", "curl", "ls", "cat", "grep", "find", "git"}
 
 
 class ExecTools:
@@ -10,7 +13,7 @@ class ExecTools:
         return [
             {
                 "name": "run_command",
-                "description": f"Run a whitelisted shell command in the app. Allowed prefixes: {ALLOWED}",
+                "description": f"Run a whitelisted single command in the app. Allowed executables: {sorted(ALLOWED)}",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -34,13 +37,17 @@ class ExecTools:
     async def execute(self, name: str, inputs: dict) -> dict:
         if name == "run_command":
             cmd = inputs.get("cmd", "")
-            if not any(cmd.strip().lower().startswith(p) for p in ALLOWED):
-                return {"error": f"command not allowed: '{cmd}'"}
+            ok, reason, _parts = validate_agent_command(cmd, ALLOWED)
+            if not ok:
+                return {"error": reason, "recoverable": True}
             result = await self._runtime.exec(cmd, timeout=inputs.get("timeout_seconds", 30))
             return result.model_dump()
         elif name == "run_tests":
             test_name = inputs.get("test_name", "")
             cmd = self._test_cmd + (f" {test_name}" if test_name else "")
+            ok, reason, _parts = validate_agent_command(cmd, ALLOWED)
+            if not ok:
+                return {"error": reason, "recoverable": True, "passed": False}
             result = await self._runtime.exec(cmd, timeout=120)
             return {**result.model_dump(), "passed": result.returncode == 0}
         return {"error": f"unknown: {name}"}

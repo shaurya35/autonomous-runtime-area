@@ -15,7 +15,10 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function OrHeader({ run, currentPhase }: Props) {
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(() => {
+    if (run.started_at) return Math.floor(Date.now() / 1000 - run.started_at);
+    return 0;
+  });
 
   useEffect(() => {
     if (run.status !== "running") return;

@@ -97,7 +97,7 @@ class AnomalyDetector:
             log.warning("detector tried to create incident but no agent for workspace=%d", workspace_id)
             return
 
-        evidence_dir = Path(__file__).parent.parent / "evidence"
+        evidence_dir = getattr(self._app, "evidence_dir", Path(__file__).parent.parent / "evidence")
         run_id = str(uuid.uuid4())
         channel = IncidentChannel(run_id, "auto-detect", evidence_dir)
         conn.channels[run_id] = channel
@@ -112,7 +112,17 @@ class AnomalyDetector:
         }
         self._app.incidents[run_id] = record
 
-        remote = RemoteToolRouter(conn)
+        ws_row = self._app.db.execute(
+            "SELECT * FROM workspaces WHERE id = ?", (workspace_id,)
+        ).fetchone()
+        workspace = dict(ws_row) if ws_row else {"id": workspace_id, "fix_mode": "approve"}
+        remote = RemoteToolRouter(
+            conn=conn,
+            workspace=workspace,
+            channel=channel,
+            db=self._app.db,
+            patch_store=getattr(self._app, "patch_store", None),
+        )
         agent = SentinelAgent(tools=remote.definitions(), channel=channel)
         brief = (
             f"AUTOMATIC INCIDENT DETECTED\n"
@@ -124,6 +134,14 @@ class AnomalyDetector:
         import traceback as tb
         try:
             result = await agent.run(brief, remote.execute)
+            if result.get("status") == "failed":
+                self._app.incidents[run_id].update({
+                    "status": "failed",
+                    "error": result.get("error", "agent_failed"),
+                    "phases_reached": result.get("phases_reached", []),
+                    "mttr_s": result.get("mttr_s", 0),
+                })
+                return
             phases = result.get("phases_reached", [])
             self._app.incidents[run_id].update({
                 "status": "done",

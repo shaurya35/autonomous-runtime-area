@@ -18,6 +18,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sentinel.db import (
     get_workspace_by_api_key,
     set_app_connected,
+    set_app_disconnected,
 )
 
 log = logging.getLogger(__name__)
@@ -124,6 +125,7 @@ async def handle_agent_connection(websocket: WebSocket, app_state) -> None:
     finally:
         conn.cancel_all()
         app_state.agents.pop(ws_id, None)
+        set_app_disconnected(app_state.db, ws_id)
         log.info("agent disconnected: workspace=%d", ws_id)
 
         q = app_state.ws_events.get(ws_id)

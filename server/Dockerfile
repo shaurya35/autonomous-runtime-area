@@ -2,12 +2,18 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-RUN pip install uv
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    patch \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-RUN uv pip install --system -e "."
+RUN curl -fsSL https://get.docker.com | sh || true
+RUN pip install --no-cache-dir uv
 
 COPY . .
+RUN uv pip install --system -e "."
 
 EXPOSE 8000
 

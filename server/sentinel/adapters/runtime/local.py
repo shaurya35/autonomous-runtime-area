@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 import subprocess
 from pathlib import Path
 from sentinel.adapters.runtime.base import Runtime
@@ -43,7 +44,7 @@ class LocalRuntime(Runtime):
             f.write(diff_text)
             patch_file = f.name
         try:
-            result = await self.exec(f"patch -p1 < {patch_file}", timeout=30)
+            result = await self.exec(f"patch -p1 < {shlex.quote(patch_file)}", timeout=30)
             return PatchResult(success=result.returncode == 0,
                                error=result.stderr if result.returncode != 0 else None)
         finally:
