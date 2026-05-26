@@ -10,12 +10,8 @@ inject:
     diff: |
       --- a/src/routes/products.rs
       +++ b/src/routes/products.rs
-      @@ -48,7 +48,7 @@ async fn list_products(
-           let page = pagination.page.max(1);
-           let per_page = pagination.per_page.clamp(1, 100);
-      -    // Correct formula: offset = (page - 1) * per_page (page is 1-indexed)
+      @@ -50,1 +50,1 @@
       -    let offset = (page - 1) * per_page;
-      +    // BUG: page is 1-indexed but formula treats it as 0-indexed, skipping first page
       +    let offset = page * per_page;
 
 ground_truth:
@@ -28,9 +24,7 @@ ground_truth:
   fix_diff: |
     --- a/src/routes/products.rs
     +++ b/src/routes/products.rs
-    @@ -48,7 +48,7 @@ async fn list_products(
-         let page = pagination.page.max(1);
-         let per_page = pagination.per_page.clamp(1, 100);
+    @@ -50,1 +50,1 @@
     -    let offset = page * per_page;
     +    let offset = (page - 1) * per_page;
 

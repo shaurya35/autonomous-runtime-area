@@ -6,13 +6,8 @@ difficulty: medium
 
 inject:
   - type: config_change
-    file: .env
-    diff: |
-      --- a/.env
-      +++ b/.env
-      @@ -9,7 +9,7 @@
-      -POOL_MAX_CONNECTIONS=10
-      +POOL_MAX_CONNECTIONS=2
+    env_var: POOL_MAX_CONNECTIONS
+    value: "2"
 
 ground_truth:
   root_cause: >
